@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import sys
-import openai
+import openai  
 
 from fastapi import FastAPI, HTTPException, Request
 from linebot.v3 import WebhookHandler
@@ -41,9 +41,11 @@ if not channel_secret or not channel_access_token:
 configuration = Configuration(access_token=channel_access_token)
 handler = WebhookHandler(channel_secret)
 
-# OpenAI configuration
+# OpenAI configuration and client initialization
 openai.api_key = os.getenv("OPENAI_API_KEY")
 assistant_id = os.getenv("OPENAI_ASSISTANT_ID")
+
+client = openai.OpenAI()  # Ensure the client is initialized here
 
 # Firebase setup
 firebase_url = os.getenv("FIREBASE_URL")
@@ -77,7 +79,7 @@ def handle_text_message(event: MessageEvent):
 
     if not thread_id:
         logger.info(f"No thread_id found for user {user_id}. Creating a new thread.")
-        thread = client.beta.threads.create()
+        thread = client.beta.threads.create()  # Initialize the thread here
         thread_id = thread.id
         fdb.put(user_chat_path, "thread_id", thread_id)
 
@@ -114,7 +116,6 @@ def handle_text_message(event: MessageEvent):
         )
 
     return "OK"
-    
 
 # Entry point to run the application
 if __name__ == "__main__":
