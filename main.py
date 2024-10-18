@@ -71,20 +71,15 @@ def handle_text_message(event: MessageEvent):
     text = event.message.text
     user_id = event.source.user_id
 
-    # Retrieve the user's chat history from Firebase
+    # Fetch or create a thread ID from Firebase
     user_chat_path = f"chat/{user_id}"
-    conversation_data = fdb.get(user_chat_path, None) or []
+    thread_id = fdb.get(user_chat_path, "thread_id")
 
-    # Initialize OpenAI client
-    client = openai.OpenAI()
-
-    # Create a thread for the conversation (if not already started)
-    if not conversation_data:
+    if not thread_id:
+        logger.info(f"No thread_id found for user {user_id}. Creating a new thread.")
         thread = client.beta.threads.create()
         thread_id = thread.id
         fdb.put(user_chat_path, "thread_id", thread_id)
-    else:
-        thread_id = fdb.get(user_chat_path, "thread_id")
 
     # Add the user's message to the thread
     client.beta.threads.messages.create(
@@ -93,14 +88,12 @@ def handle_text_message(event: MessageEvent):
         content=text,
     )
 
-    # Run the thread with the configured assistant to generate a response
+    # Run the thread with the assistant to generate a response
     try:
         run = client.beta.threads.runs.create(
             thread_id=thread_id,
             assistant_id=assistant_id,
         )
-
-        # Extract the assistant's reply
         assistant_reply = run.messages[-1].content
 
     except Exception as e:
@@ -121,6 +114,7 @@ def handle_text_message(event: MessageEvent):
         )
 
     return "OK"
+    
 
 # Entry point to run the application
 if __name__ == "__main__":
