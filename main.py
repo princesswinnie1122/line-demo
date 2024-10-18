@@ -18,7 +18,6 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 from firebase import firebase
-from utils import is_url_valid, shorten_url_by_reurl_api, create_gcal_url
 import uvicorn
 
 # Load environment variables from .env file
