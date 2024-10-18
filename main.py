@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import sys
-import openai  # Import OpenAI library
+import openai  
 
 from fastapi import FastAPI, HTTPException, Request
 from linebot.v3 import WebhookHandler
@@ -25,14 +25,13 @@ import uvicorn
 if os.getenv("API_ENV") != "production":
     load_dotenv()
 
-# Logging configuration
+# Logging
 logging.basicConfig(level=os.getenv("LOG", "INFO"))
 logger = logging.getLogger(__file__)
 
-# Initialize FastAPI app
 app = FastAPI()
 
-# LINE Bot configuration
+# LINE configuration
 channel_secret = os.getenv("LINE_CHANNEL_SECRET")
 channel_access_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 if not channel_secret or not channel_access_token:
@@ -42,15 +41,15 @@ if not channel_secret or not channel_access_token:
 configuration = Configuration(access_token=channel_access_token)
 handler = WebhookHandler(channel_secret)
 
-# OpenAI Assistant configuration
+# OpenAI
 openai.api_key = os.getenv("OPENAI_API_KEY")
 assistant_id = os.getenv("OPENAI_ASSISTANT_ID")
 
-# Firebase configuration
+# Firebase
 firebase_url = os.getenv("FIREBASE_URL")
 fdb = firebase.FirebaseApplication(firebase_url, None)
 
-
+# 
 @app.get("/health")
 async def health():
     return "ok"
@@ -70,7 +69,7 @@ async def handle_callback(request: Request):
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event: MessageEvent):
-    text = event.message.text  # User's message from LINE
+    text = event.message.text  
     user_id = event.source.user_id
 
     # Fetch conversation history from Firebase
