@@ -134,16 +134,21 @@ def handle_text_message(event: MessageEvent):
         logger.error(f"OpenAI API error: {e}")
         assistant_reply = "Sorry, I couldn't process your request."
 
-    # Store the assistant's reply in Firebase
-    fdb.put_async(user_chat_path, None, {"assistant_reply": assistant_reply})
+    assistant_reply = event_handler.final_response
 
-    # Send the reply to the user via LINE
+    # Remove content within 【】 from the assistant's reply
+    assistant_reply_cleaned = re.sub(r'【.*?】', '', assistant_reply)
+
+    # Store the assistant's reply in Firebase (optional, if you want to store the cleaned version)
+    fdb.put_async(user_chat_path, None, {"assistant_reply": assistant_reply_cleaned})
+
+    # Send the cleaned reply to the user via LINE
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         line_bot_api.reply_message(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[TextMessage(text=assistant_reply)],
+                messages=[TextMessage(text=assistant_reply_cleaned.strip())],  # Use .strip() to remove any leading/trailing whitespace
             )
         )
 
