@@ -227,9 +227,7 @@ def handle_text_message(event: MessageEvent):
             fdb.put(user_data_path, "state", "awaiting_mode_selection")
 
             # Ask for mode preference
-            completion_message = """Thank you! Your information has been saved. 
-            Would you prefer normal or bilingual mode (showing both your native language and Traditional Chinese)?
-            Type 0 for normal and 1 for bilingual.💬"""
+            completion_message = """Thank you! Your information has been saved. Would you prefer normal or bilingual mode (showing both your native language and Traditional Chinese)? Type 0 for normal and 1 for bilingual.💬"""
 
             reply_messages = [TextMessage(text=completion_message)]
 
@@ -462,7 +460,7 @@ def check_image(url=None, b_image=None):
     model = genai.GenerativeModel("gemini-1.5-flash")
     response = model.generate_content(
         [
-            "Extracted the words in the image, then provide a summary of the whole image.",
+            "Extracted the words and describe the whole image.",
             image,
         ]
     )
@@ -594,10 +592,14 @@ def handle_github_message(event):
             thread_id = thread.id
             fdb.put(user_chat_path, "thread_id", thread_id)
 
+
+        custom_system_message = f"Organize content of the image:"
+        combined_message = f"{custom_system_message}\n\n{image_data}"
+
         client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
-            content=image_data,
+            content=combined_message,
         )
 
         event_handler = EventHandler()
@@ -616,11 +618,9 @@ def handle_github_message(event):
             logger.error(f"OpenAI API error: {e}")
             assistant_reply = "Sorry, I couldn't process your request."
 
-        # Remove content within 【】 from the assistant's reply
-        assistant_reply_cleaned = re.sub(r'【.*?】', '', assistant_reply)
 
         # Store the assistant's reply in Firebase (optional)
-        fdb.put_async(user_chat_path, None, {"assistant_reply": assistant_reply_cleaned})
+        fdb.put_async(user_chat_path, None, {"assistant_reply_to_image": assistant_reply_cleaned})
 
         # Send the cleaned reply to the user via LINE
         with ApiClient(configuration) as api_client:
