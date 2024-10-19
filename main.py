@@ -174,8 +174,6 @@ def handle_text_message(event: MessageEvent):
     """Handle incoming messages."""
     text = event.message.text.strip()
     user_id = event.source.user_id
-    if text=="User Setup":
-        handle_follow_event(event)
     handle_user_message(event, text)
 
 
