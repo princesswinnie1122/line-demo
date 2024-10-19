@@ -9,7 +9,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 import logging
-
+import os
 
 from fastapi import FastAPI, HTTPException, Request
 from linebot.v3 import WebhookHandler
@@ -17,6 +17,7 @@ from linebot.v3.messaging import (
     Configuration,
     ReplyMessageRequest,
     TextMessage,
+    AudioMessage,
     ApiClient,
     MessagingApi,
     MessagingApiBlob,
@@ -392,6 +393,7 @@ def handle_text_message(event: MessageEvent):
     else:
         # 處理其他訊息
         handle_user_message(event, text)
+<<<<<<< Updated upstream
 
 @handler.add(MessageEvent, message=AudioMessageContent)
 def handle_audio_message(event: MessageEvent):
@@ -445,6 +447,9 @@ def handle_audio_message(event: MessageEvent):
         # Delete the temporary file
         if os.path.exists(temp_audio_file_path):
             os.remove(temp_audio_file_path)
+=======
+'''
+>>>>>>> Stashed changes
 
 
 # Image processing
@@ -472,9 +477,192 @@ def check_image(url=None, b_image=None):
 
 
 
+@handler.add(MessageEvent, message=AudioMessageContent)
+def handle_audio_message(event):
+
+    user_id = event.source.user_id
+    user_data_path = f"users/{user_id}"
+    user_chat_path = f"chat/{user_id}"
+    user_state = fdb.get(user_data_path, "state")
+
+    # If user is in the setup process
+    if user_state == "awaiting_country_language":
+        # Validate the format (Country, Language)
+        if "," in text:
+            country_language = text.split(",", 1)
+            country = country_language[0].strip()
+            language = country_language[1].strip()
+
+            # Save to Firebase
+            fdb.put(user_data_path, "country", country)
+            fdb.put(user_data_path, "language", language)
+            fdb.put(user_data_path, "state", "awaiting_major_grade")
+
+            # Ask for Major/Grade
+            prompt_major_grade = "【STEP 2】What's the major and grade you're in? (e.g., Computer Science, 3)"
+            reply_messages = [TextMessage(text=prompt_major_grade)]
+
+        else:
+            # Invalid format, prompt again
+            prompt_retry = "Please enter in the format 'Country, Language' (e.g., Japan, Japanese)."
+            reply_messages = [TextMessage(text=prompt_retry)]
+
+        # Send the reply
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=reply_messages,
+                )
+            )
+        return "OK"
+
+    elif user_state == "awaiting_major_grade":
+        # Validate the format (Major, Grade)
+        if "," in text:
+            major_grade = text.split(",", 1)
+            major = major_grade[0].strip()
+            grade = major_grade[1].strip()
+
+            # Save to Firebase
+            fdb.put(user_data_path, "major", major)
+            fdb.put(user_data_path, "grade", grade)
+            fdb.put(user_data_path, "state", "awaiting_mode_selection")
+
+            # Ask for mode preference
+            completion_message = """Thank you! Your information has been saved. Would you prefer normal or bilingual mode (showing both your native language and Traditional Chinese)? Type 0 for normal and 1 for bilingual.💬"""
+
+            reply_messages = [TextMessage(text=completion_message)]
+
+        else:
+            # Invalid format, prompt again
+            prompt_retry = "Please enter in the format 'Major, Grade' (e.g., Computer Science, 3)."
+            reply_messages = [TextMessage(text=prompt_retry)]
+
+        # Send the reply
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=reply_messages,
+                )
+            )
+        return "OK"
+
+    elif user_state == "awaiting_mode_selection":
+        # Validate the user's input (0 or 1)
+        if text in ["0", "1"]:
+            fdb.put(user_data_path, "mode", text)
+            fdb.put(user_data_path, "state", "setup_complete")
+
+            # Acknowledge completion
+            if text == "1":
+                # User selected bilingual mode
+                completion_message = (
+                    "Thank you! Your preference has been saved. How can I assist you today?\n"
+                    "謝謝！您的偏好已保存。請問今天有什麼可以幫助您的？"
+                )
+            else:
+                # User selected normal mode
+                completion_message = "Thank you! Your preference has been saved. How can I assist you today?"
+
+            reply_messages = [TextMessage(text=completion_message)]
+        else:
+            # Invalid input, prompt again
+            prompt_retry = "Please enter 0 for normal mode or 1 for bilingual mode."
+            reply_messages = [TextMessage(text=prompt_retry)]
+
+        # Send the reply
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=reply_messages,
+                )
+            )
+        return "OK"
+
+    else:
+        with ApiClient(configuration) as api_client:
+            line_bot_blob_api = MessagingApiBlob(api_client)
+            audio_content = line_bot_blob_api.get_message_content(message_id)
+
+        # Save the audio content to a temporary file with .m4a extension
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".m4a") as temp_audio_file:
+            for chunk in audio_content:
+                temp_audio_file.write(chunk)
+            temp_audio_path = temp_audio_file.name
+
+        # Save the temporary audio file to Firebase storage or database
+        with open(temp_audio_path, "rb") as audio_file:
+            # Convert the file to binary data and save it in Firebase
+            fdb.put(f"audio/{user_id}", message_id, audio_file.read())
+
+        # Convert the audio to text using Whisper API
+        with open(temp_audio_path, "rb") as audio_file:
+            whisper_response = openai.Audio.transcribe("whisper-1", audio_file)
+            transcribed_text = whisper_response["text"]
+
+        # Delete the temporary audio file after conversion
+        os.remove(temp_audio_path)
+        logger.info(f"{transcribed_text}")
+
+        thread_id = fdb.get(user_chat_path, "thread_id")
+        if not thread_id:
+            logger.info(f"Creating a new thread for user {user_id}.")
+            thread = client.beta.threads.create()
+            thread_id = thread.id
+            fdb.put(user_chat_path, "thread_id", thread_id)
+
+
+        custom_system_message = f"Organize content of the audio into notes. Do not use markdown bold formatting (**). Do not start with 'The image shows' or 'This image depicts'. Here's the description of the image:"
+        combined_message = f"{custom_system_message}\n\n{transcribed_text}"
+
+        client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=combined_message,
+        )
+
+        event_handler = EventHandler()
+
+        try:
+            with client.beta.threads.runs.stream(
+                thread_id=thread_id,
+                assistant_id=assistant_id,
+                event_handler=event_handler,
+            ) as stream:
+                stream.until_done()
+
+            assistant_reply = event_handler.final_response
+
+        except Exception as e:
+            logger.error(f"OpenAI API error: {e}")
+            assistant_reply = "Sorry, I couldn't process your request."
+
+
+        # Store the assistant's reply in Firebase (optional)
+        fdb.put_async(user_chat_path, None, {"assistant_reply_to_audio": assistant_reply})
+
+        # Send the cleaned reply to the user via LINE
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=assistant_reply.strip())],
+                )
+            )
+
+        return "OK"
+
+
 
 @handler.add(MessageEvent, message=ImageMessageContent)
-def handle_github_message(event):
+def handle_image_message(event):
 
     user_id = event.source.user_id
     user_data_path = f"users/{user_id}"
