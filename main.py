@@ -114,30 +114,13 @@ def handle_text_message(event: MessageEvent):
 
     # Retrieve user data
     user_data = fdb.get(user_data_path, None) or {}
-    user_state = user_data.get('state', 'new')
+    user_state = user_data.get('state', 'waiting_for_country_language')
 
     # Initialize the response message
     reply_message = ""
 
     # State machine logic
-    if user_state == 'new':
-        # User is new, fetch nickname and send greeting message
-        with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            try:
-                profile = line_bot_api.get_profile(user_id)
-                nickname = profile.display_name
-            except Exception as e:
-                logger.error(f"Failed to get user profile: {e}")
-                nickname = 'there'  # Default to 'there' if nickname is unavailable
-
-        account_name = os.getenv('ACCOUNT_NAME', 'Our Service')
-
-        reply_message = f"""Please enter your Country/Language (e.g., Japan/Japanese)."""
-        user_data['state'] = 'waiting_for_country_language'
-        fdb.put('users', user_id, user_data)
-
-    elif user_state == 'waiting_for_country_language':
+    if user_state == 'waiting_for_country_language':
         # Expecting Country/Language input
         if re.match(r"^\w+/\w+$", text):
             country, language = text.split('/')
@@ -151,7 +134,7 @@ def handle_text_message(event: MessageEvent):
 
     elif user_state == 'waiting_for_major_grade':
         # Expecting Major/Grade input
-        if re.match(r"^\w+/\d+$", text):
+        if re.match(r"^[\w\s]+/\d+$", text):
             major, grade = text.split('/')
             user_data['major'] = major
             user_data['grade'] = grade
