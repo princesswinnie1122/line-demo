@@ -516,15 +516,15 @@ def handle_audio_message(event):
 
         # Save the audio content to a temporary file with .m4a extension
         with tempfile.NamedTemporaryFile(delete=False, suffix=".m4a") as temp_audio_file:
-            for chunk in audio_content:
-                temp_audio_file.write(chunk)
-            temp_audio_path = temp_audio_file.name
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".m4a") as temp_audio_file:
             for chunk in audio_content.iter_content(chunk_size=1024):
                 if isinstance(chunk, bytes):
                     temp_audio_file.write(chunk)
             temp_audio_path = temp_audio_file.name
+
+        # Save the temporary audio file to Firebase storage or database
+        with open(temp_audio_path, "rb") as audio_file:
+            # Convert the file to binary data and save it in Firebase
+            fdb.put(f"audio/{user_id}", message_id, audio_file.read())
 
         # Convert the audio to text using Whisper API
         with open(temp_audio_path, "rb") as audio_file:
