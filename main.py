@@ -30,7 +30,7 @@ from linebot.v3.webhooks import (
     AudioMessageContent,
     ImageMessageContent
 )
-
+from linebot import LineBotApi
 from dotenv import load_dotenv
 from firebase import firebase
 import uvicorn
@@ -52,6 +52,7 @@ app = FastAPI()
 # LINE Bot configuration
 channel_secret = os.getenv("LINE_CHANNEL_SECRET")
 channel_access_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 
 if not channel_secret or not channel_access_token:
     print("LINE credentials not set.")
@@ -118,9 +119,9 @@ def handle_follow_event(event):
     # Get user's display name (optional)
     profile = None
     with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
+        line_bot_api_2 = MessagingApi(api_client)
         try:
-            profile = line_bot_api.get_profile(user_id)
+            profile = line_bot_api_2_2.get_profile(user_id)
             display_name = profile.display_name
         except Exception as e:
             logger.error(f"Error getting user profile: {e}")
@@ -138,8 +139,8 @@ Let us know if you need any help along the way! We're here for you. 🫶"""
 
     # Send the greeting messages
     with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-        line_bot_api.reply_message(
+        line_bot_api_2 = MessagingApi(api_client)
+        line_bot_api_2.reply_message(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
                 messages=[
@@ -206,8 +207,8 @@ def handle_text_message(event: MessageEvent):
 
         # Send the reply
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
+            line_bot_api_2 = MessagingApi(api_client)
+            line_bot_api_2.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=reply_messages,
@@ -243,8 +244,8 @@ Type "0" for normal and "1" for bilingual.💬"""
 
         # Send the reply
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
+            line_bot_api_2 = MessagingApi(api_client)
+            line_bot_api_2.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=reply_messages,
@@ -277,8 +278,8 @@ Type "0" for normal and "1" for bilingual.💬"""
 
         # Send the reply
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
+            line_bot_api_2 = MessagingApi(api_client)
+            line_bot_api_2.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=reply_messages,
@@ -348,8 +349,8 @@ Type "0" for normal and "1" for bilingual.💬"""
 
         # Send the cleaned reply to the user via LINE
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
+            line_bot_api_2 = MessagingApi(api_client)
+            line_bot_api_2.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=[TextMessage(text=assistant_reply_cleaned.strip())],
@@ -409,52 +410,122 @@ def handle_audio_message(event):
     user_chat_path = f"chat/{user_id}"
     user_state = fdb.get(user_data_path, "state")
 
-    # Check if the user is in the setup process
-    if user_state != "setup_complete":
-        # Inform the user to send text messages during setup
-        prompt_retry = "Please complete the setup by sending the required information as text messages."
-        reply_messages = [TextMessage(text=prompt_retry)]
+    # If user is in the setup process
+    if user_state == "awaiting_country_language":
+        # Validate the format (Country, Language)
+        if "," in text:
+            country_language = text.split(",", 1)
+            country = country_language[0].strip()
+            language = country_language[1].strip()
+
+            # Save to Firebase
+            fdb.put(user_data_path, "country", country)
+            fdb.put(user_data_path, "language", language)
+            fdb.put(user_data_path, "state", "awaiting_major_grade")
+
+            # Ask for Major/Grade
+            prompt_major_grade = "【STEP 2】What's the major and grade you're in? (e.g., Computer Science, 3)"
+            reply_messages = [TextMessage(text=prompt_major_grade)]
+
+        else:
+            # Invalid format, prompt again
+            prompt_retry = "Please enter in the format 'Country, Language' (e.g., Japan, Japanese)."
+            reply_messages = [TextMessage(text=prompt_retry)]
 
         # Send the reply
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
+            line_bot_api_2 = MessagingApi(api_client)
+            line_bot_api_2.reply_message(
                 ReplyMessageRequest(
-                    reply_token=reply_token,
+                    reply_token=event.reply_token,
+                    messages=reply_messages,
+                )
+            )
+        return "OK"
+
+    elif user_state == "awaiting_major_grade":
+        # Validate the format (Major, Grade)
+        if "," in text:
+            major_grade = text.split(",", 1)
+            major = major_grade[0].strip()
+            grade = major_grade[1].strip()
+
+            # Save to Firebase
+            fdb.put(user_data_path, "major", major)
+            fdb.put(user_data_path, "grade", grade)
+            fdb.put(user_data_path, "state", "awaiting_mode_selection")
+
+            # Ask for mode preference
+            completion_message = """Thank you! Your information has been saved. Would you prefer normal or bilingual mode (showing both your native language and Traditional Chinese)? Type 0 for normal and 1 for bilingual.💬"""
+
+            reply_messages = [TextMessage(text=completion_message)]
+
+        else:
+            # Invalid format, prompt again
+            prompt_retry = "Please enter in the format 'Major, Grade' (e.g., Computer Science, 3)."
+            reply_messages = [TextMessage(text=prompt_retry)]
+
+        # Send the reply
+        with ApiClient(configuration) as api_client:
+            line_bot_api_2 = MessagingApi(api_client)
+            line_bot_api_2.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=reply_messages,
+                )
+            )
+        return "OK"
+
+    elif user_state == "awaiting_mode_selection":
+        # Validate the user's input (0 or 1)
+        if text in ["0", "1"]:
+            fdb.put(user_data_path, "mode", text)
+            fdb.put(user_data_path, "state", "setup_complete")
+
+            # Acknowledge completion
+            if text == "1":
+                # User selected bilingual mode
+                completion_message = (
+                    "Thank you! Your preference has been saved. How can I assist you today?\n"
+                    "謝謝！您的偏好已保存。請問今天有什麼可以幫助您的？"
+                )
+            else:
+                # User selected normal mode
+                completion_message = "Thank you! Your preference has been saved. How can I assist you today?"
+
+            reply_messages = [TextMessage(text=completion_message)]
+        else:
+            # Invalid input, prompt again
+            prompt_retry = "Please enter 0 for normal mode or 1 for bilingual mode."
+            reply_messages = [TextMessage(text=prompt_retry)]
+
+        # Send the reply
+        with ApiClient(configuration) as api_client:
+            line_bot_api_2 = MessagingApi(api_client)
+            line_bot_api_2.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
                     messages=reply_messages,
                 )
             )
         return "OK"
 
     else:
-        # User has completed setup, proceed to handle the audio message
+        message_content = line_bot_api.get_message_content(event.message.id)
+        
 
-        # Initialize line_bot_api
-        with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            message_content = line_bot_api.get_message_content(event.message.id)
-            audio_content = message_content.read()
-
-        # Save the audio content to a temporary file with .m4a extension
         with tempfile.NamedTemporaryFile(suffix='.m4a', delete=False) as temp_audio_file:
-            temp_audio_file.write(audio_content)
+            for chunk in message_content.iter_content():
+                temp_audio_file.write(chunk)
             temp_audio_path = temp_audio_file.name
 
-        # Convert the audio to text using Whisper API
-        try:
-            with open(temp_audio_path, 'rb') as audio_file:
-                transcription = openai.Audio.transcribe("whisper-1", audio_file)
-                transcribed_text = transcription['text']
-        except Exception as e:
-            logger.error(f"Transcription error: {e}")
-            transcribed_text = "Sorry, I couldn't transcribe your audio message."
+        
+        with open(temp_audio_path, 'rb') as audio_file:
+            transcription = openai.Audio.transcribe("whisper-1", audio_file)
+            transcribed_text = transcription['text']
 
-        logger.info(f"Transcribed Text: {transcribed_text}")
+        logger.info(f"{transcribed_text}")
 
-        # Delete the temporary audio file after transcription
-        os.remove(temp_audio_path)
-
-        # Retrieve or create thread ID
         thread_id = fdb.get(user_chat_path, "thread_id")
         if not thread_id:
             logger.info(f"Creating a new thread for user {user_id}.")
@@ -462,23 +533,16 @@ def handle_audio_message(event):
             thread_id = thread.id
             fdb.put(user_chat_path, "thread_id", thread_id)
 
-        # Prepare custom system message
-        custom_system_message = (
-            "Organize the content of the audio into notes. "
-            "Do not use markdown bold formatting (**). "
-            "Do not start with 'The audio says' or 'This audio contains'. "
-            "Here's the transcribed text:"
-        )
+
+        custom_system_message = f"Organize content of the audio into notes. Do not use markdown bold formatting (**). Do not start with 'The image shows' or 'This image depicts'. Here's the description of the image:"
         combined_message = f"{custom_system_message}\n\n{transcribed_text}"
 
-        # Add the combined message to the thread as a 'user' message
         client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
             content=combined_message,
         )
 
-        # Stream the assistant's response
         event_handler = EventHandler()
 
         try:
@@ -495,10 +559,10 @@ def handle_audio_message(event):
             logger.error(f"OpenAI API error: {e}")
             assistant_reply = "Sorry, I couldn't process your request."
 
-        # Send the assistant's reply to the user via LINE
+        # Send the cleaned reply to the user via LINE
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
+            line_bot_api_2 = MessagingApi(api_client)
+            line_bot_api_2.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=[TextMessage(text=assistant_reply.strip())],
@@ -564,8 +628,8 @@ def handle_image_message(event):
 
         # Send the reply
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
+            line_bot_api_2 = MessagingApi(api_client)
+            line_bot_api_2.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=reply_messages,
@@ -597,8 +661,8 @@ def handle_image_message(event):
 
         # Send the reply
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
+            line_bot_api_2 = MessagingApi(api_client)
+            line_bot_api_2.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=reply_messages,
@@ -631,8 +695,8 @@ def handle_image_message(event):
 
         # Send the reply
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
+            line_bot_api_2 = MessagingApi(api_client)
+            line_bot_api_2.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=reply_messages,
@@ -703,8 +767,8 @@ def handle_image_message(event):
 
         # Send the cleaned reply to the user via LINE
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
+            line_bot_api_2 = MessagingApi(api_client)
+            line_bot_api_2.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=[TextMessage(text=assistant_reply.strip())],
