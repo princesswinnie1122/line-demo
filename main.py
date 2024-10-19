@@ -114,46 +114,36 @@ def handle_text_message(event: MessageEvent):
 
     # Retrieve user data
     user_data = fdb.get(user_data_path, None) or {}
-    user_state = user_data.get('state', 'waiting_for_country_language')
+    user_state = user_data.get('state', 'new')
 
     # Initialize the response message
     reply_message = ""
 
     # State machine logic
-    if user_state == 'waiting_for_country_language':
+    if user_state == 'new':
         # Expecting Country/Language input
         if re.match(r"^\w+/\w+$", text):
+            # Save country and language
             country, language = text.split('/')
             user_data['country'] = country
             user_data['language'] = language
-            user_data['state'] = 'waiting_for_major_grade'
-            fdb.put('users', user_id, user_data)
-            reply_message = "Thank you! What's your major/grade? Please enter in the format Major/Grade (e.g., Computer Science/26)."
-        else:
-            reply_message = "Please enter your Country/Language in the correct format (e.g., Japan/Japanese)."
-
-    elif user_state == 'waiting_for_major_grade':
-        # Expecting Major/Grade input
-        if re.match(r"^[\w\s]+/\d+$", text):
-            major, grade = text.split('/')
-            user_data['major'] = major
-            user_data['grade'] = grade
             user_data['state'] = 'complete'
             fdb.put('users', user_id, user_data)
             reply_message = "Thank you! You can now start asking questions."
         else:
-            reply_message = "Please enter your Major/Grade in the correct format (e.g., Computer Science/26)."
+            # Input format is incorrect
+            reply_message = "Please enter your Country/Language in the correct format (e.g., Japan/Japanese)."
 
     else:
-        # User has completed onboarding, proceed with assistant interaction
-        # Prepare assistant prompt with user info
+        # User has completed initial setup, proceed with assistant interaction
+        # Retrieve user info
         country = user_data.get('country', '')
         language = user_data.get('language', '')
-        major = user_data.get('major', '')
-        grade = user_data.get('grade', '')
+
+        # Prepare assistant prompt with user info
+        assistant_prompt = f"Answer the following question in {language}, considering the user is from {country}."
 
         # Add the user's message to the thread with additional context
-        assistant_prompt = f"Answer the following question in {language}, based on a {grade}-year-old {major} student from {country}."
         client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
@@ -196,7 +186,6 @@ def handle_text_message(event: MessageEvent):
         )
 
     return "OK"
-
 
 # Entry point to run the application
 if __name__ == "__main__":
