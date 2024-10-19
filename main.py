@@ -271,9 +271,9 @@ def handle_text_message(event: MessageEvent):
 
         # Prepare custom prompt or system message based on mode
         if mode == "0":
-            custom_system_message = f"Answer in {language}, and based on the student's major {major} and grade {grade}."
+            custom_system_message = f"Answer in {language} based on the student's major {major} and grade {grade}."
         elif mode == "1":
-            custom_system_message = f"Answer in both {language} and Traditional Chinese, and based on the student's major {major} and grade {grade}."
+            custom_system_message = f"Answer in both {language} based on the student's major {major} and grade {grade}. Then answer a translated version of Traditional Chinese again."
         else:
             # Default to normal mode if mode is not recognized
             custom_system_message = f"Answer in {language}, and based on the student's major {major} and grade {grade}."
