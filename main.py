@@ -110,23 +110,27 @@ def handle_follow_event(event):
             logger.error(f"Error getting user profile: {e}")
             display_name = "there"
 
-    # Prepare the greeting message
-    greeting_message = f"""Hello {display_name}!!
+    # Prepare the greeting messages
+    greeting_message_part1 = f"""Hello {display_name}!!
 Welcome to UniHelp 😊
 
 To get started, please set up your identity by answering these questions below so we can assist you better! ✨
 
 Let us know if you need any help along the way! We're here for you. 💬🫶
+"""
 
-【STEP 1】Please enter your country and native language (e.g., Japan, Japanese)."""
+    greeting_message_part2 = """【STEP 1】Please enter your country and native language (e.g., Japan, Japanese)."""
 
-    # Send the greeting message
+    # Send the greeting messages
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         line_bot_api.reply_message(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[TextMessage(text=greeting_message)],
+                messages=[
+                    TextMessage(text=greeting_message_part1),
+                    TextMessage(text=greeting_message_part2),
+                ],
             )
         )
 
@@ -218,8 +222,18 @@ def handle_text_message(event: MessageEvent):
         if text in ["0", "1"]:
             fdb.put(user_data_path, "mode", text)
             fdb.put(user_data_path, "state", "setup_complete")
+
             # Acknowledge completion
-            completion_message = "Thank you! Your preference has been saved. How can I assist you today?"
+            if text == "1":
+                # User selected bilingual mode
+                completion_message = (
+                    "Thank you! Your preference has been saved. How can I assist you today?\n"
+                    "謝謝！您的偏好已保存。請問今天有什麼可以幫助您的？"
+                )
+            else:
+                # User selected normal mode
+                completion_message = "Thank you! Your preference has been saved. How can I assist you today?"
+
             reply_messages = [TextMessage(text=completion_message)]
         else:
             # Invalid input, prompt again
