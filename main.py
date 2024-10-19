@@ -232,7 +232,7 @@ def handle_text_message(event: MessageEvent):
 
 Would you prefer normal or bilingual mode (showing both your native language and Traditional Chinese)?
 
-Type "n" for normal and "b" for bilingual.💬"""
+Type "0" for normal and "1" for bilingual.💬"""
 
             reply_messages = [TextMessage(text=completion_message)]
 
@@ -402,6 +402,9 @@ def handle_text_message(event: MessageEvent):
 def handle_audio_message(event):
 
     user_id = event.source.user_id
+    reply_token = event.reply_token
+    message_id = event.message.id
+
     user_data_path = f"users/{user_id}"
     user_chat_path = f"chat/{user_id}"
     user_state = fdb.get(user_data_path, "state")
@@ -603,7 +606,7 @@ def check_image(url=None, b_image=None):
         ]
     )
     return response.text
-    
+
 @handler.add(MessageEvent, message=ImageMessageContent)
 def handle_image_message(event):
 
