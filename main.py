@@ -358,6 +358,7 @@ Type "n" for normal and "b" for bilingual.💬"""
 
         return "OK"
 
+'''
 def reset_user_to_initial_state(user_id: str, reply_token: str):
     """重設使用者資料，並模擬追蹤事件（FollowEvent）。"""
     user_data_path = f"users/{user_id}"
@@ -393,87 +394,7 @@ def handle_text_message(event: MessageEvent):
     else:
         # 處理其他訊息
         handle_user_message(event, text)
-<<<<<<< Updated upstream
-
-@handler.add(MessageEvent, message=AudioMessageContent)
-def handle_audio_message(event: MessageEvent):
-    user_id = event.source.user_id
-    message_id = event.message.id
-
-    # Get the audio content from LINE's server using MessageContentApi
-    with ApiClient(configuration) as api_client:
-        message_content_api = MessageContentApi(api_client)
-        message_content_response = message_content_api.get_message_content(message_id)
-        audio_content = message_content_response.read()
-
-    # Save the audio content to a temporary file
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.m4a') as temp_audio_file:
-        temp_audio_file.write(audio_content)
-        temp_audio_file_path = temp_audio_file.name
-
-    try:
-        # Transcribe the audio using OpenAI's Whisper API
-        audio_file = open(temp_audio_file_path, 'rb')
-        transcript = openai.Audio.transcribe('whisper-1', audio_file)
-        transcribed_text = transcript['text']
-        audio_file.close()
-
-        # Use the transcribed text as input to your assistant
-        if transcribed_text:
-            handle_user_message(event, transcribed_text)
-        else:
-            # Send an error message to the user
-            error_message = "Sorry, I couldn't understand your audio message. Please try again."
-            with ApiClient(configuration) as api_client:
-                line_bot_api = MessagingApi(api_client)
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text=error_message)],
-                    )
-                )
-    except Exception as e:
-        logger.error(f"Transcription error: {e}")
-        error_message = "An error occurred while processing your audio message. Please try again later."
-        with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text=error_message)],
-                )
-            )
-    finally:
-        # Delete the temporary file
-        if os.path.exists(temp_audio_file_path):
-            os.remove(temp_audio_file_path)
-=======
 '''
->>>>>>> Stashed changes
-
-
-# Image processing
-def check_image(url=None, b_image=None):
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-    if url is not None:
-        response = requests.get(url)
-        if response.status_code == 200:
-            image_data = response.content
-    elif b_image is not None:
-        image_data = b_image
-    else:
-        return "None"
-    logger.info(f"URL: {url} \n Image: {b_image}")
-    image = Image.open(BytesIO(image_data))
-
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content(
-        [
-            "Extracted the words and describe the whole image.",
-            image,
-        ]
-    )
-    return response.text
 
 
 
@@ -660,7 +581,29 @@ def handle_audio_message(event):
         return "OK"
 
 
+# Image processing
+def check_image(url=None, b_image=None):
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+    if url is not None:
+        response = requests.get(url)
+        if response.status_code == 200:
+            image_data = response.content
+    elif b_image is not None:
+        image_data = b_image
+    else:
+        return "None"
+    logger.info(f"URL: {url} \n Image: {b_image}")
+    image = Image.open(BytesIO(image_data))
 
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    response = model.generate_content(
+        [
+            "Extracted the words and describe the whole image.",
+            image,
+        ]
+    )
+    return response.text
+    
 @handler.add(MessageEvent, message=ImageMessageContent)
 def handle_image_message(event):
 
