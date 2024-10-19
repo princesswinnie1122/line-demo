@@ -356,7 +356,7 @@ Type "n" for normal and "b" for bilingual.💬"""
             )
 
         return "OK"
-'''
+
 def reset_user_to_initial_state(user_id: str, reply_token: str):
     """重設使用者資料，並模擬剛加入時的初始化狀態。"""
     user_data_path = f"users/{user_id}"
@@ -390,7 +390,7 @@ def handle_text_message(event: MessageEvent):
     else:
         # 處理其他訊息
         handle_user_message(event, text)
-'''
+
 @handler.add(MessageEvent, message=AudioMessageContent)
 def handle_audio_message(event: MessageEvent):
     user_id = event.source.user_id
