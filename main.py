@@ -510,9 +510,9 @@ def handle_audio_message(event):
         return "OK"
 
     else:
+        line_bot_api = MessagingApi(api_client)
         message_content = line_bot_api.get_message_content(event.message.id)
         
-
         with tempfile.NamedTemporaryFile(suffix='.m4a', delete=False) as temp_audio_file:
             for chunk in message_content.iter_content():
                 temp_audio_file.write(chunk)
@@ -560,7 +560,6 @@ def handle_audio_message(event):
 
         # Send the cleaned reply to the user via LINE
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
