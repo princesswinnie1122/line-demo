@@ -234,15 +234,20 @@ def handle_text_message(event: MessageEvent):
         custom_system_message = f"Answer in {language}, and based on the student's major {major} and grade {grade}."
 
         # Add the user's message and system message to the thread
-        client.beta.threads.messages.create(
-            thread_id=thread_id,
-            role="system",
-            content=custom_system_message,
-        )
+        # client.beta.threads.messages.create(
+        #     thread_id=thread_id,
+        #     role="system",
+        #     content=custom_system_message,
+        # )
+
+        # Combine custom system message with user's message
+        combined_message = f"{custom_system_message}\n\n{text}"
+
+        # Add the combined message to the thread as a 'user' message
         client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
-            content=text,
+            content=combined_message,
         )
 
         # Stream the assistant's response
