@@ -124,8 +124,7 @@ Welcome to UniHelp 😊
 
 To get started, please set up your identity by answering these questions below so we can assist you better! ✨
 
-Let us know if you need any help along the way! We're here for you. 💬🫶
-"""
+Let us know if you need any help along the way! We're here for you. 💬🫶"""
 
     greeting_message_part2 = """【STEP 1】Please enter your country and native language (e.g., Japan, Japanese)."""
 
@@ -145,7 +144,6 @@ Let us know if you need any help along the way! We're here for you. 💬🫶
     # Initialize the user's state in Firebase
     user_data_path = f"users/{user_id}"
     fdb.put(user_data_path, "state", "awaiting_country_language")
-
 
 
 def handle_user_message(event: MessageEvent, text: str):
@@ -297,7 +295,7 @@ def handle_text_message(event: MessageEvent):
         if mode == "0":
             custom_system_message = f"Answer in {language} based on the student's major {major} and grade {grade}."
         elif mode == "1":
-            custom_system_message = f"Answer in both {language} based on the student's major {major} and grade {grade}. Then answer a translated version of Traditional Chinese again."
+            custom_system_message = f"Answer in both {language} based on the student's major {major} and grade {grade}. Then answer a translated version of Traditional Chinese again. (Do not mention words like 'Traditional Chinese' or 'Translate' in your answer.)"
         else:
             # Default to normal mode if mode is not recognized
             custom_system_message = f"Answer in {language}, and based on the student's major {major} and grade {grade}."
@@ -353,11 +351,11 @@ def handle_audio_message(event: MessageEvent):
     user_id = event.source.user_id
     message_id = event.message.id
 
-    # Get the audio content from LINE's server
+    # Get the audio content from LINE's server using MessageContentApi
     with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-        message_content = line_bot_api.get_message_content(message_id)
-        audio_content = message_content.read()
+        message_content_api = MessageContentApi(api_client)
+        message_content_response = message_content_api.get_message_content(message_id)
+        audio_content = message_content_response.read()
 
     # Save the audio content to a temporary file
     with tempfile.NamedTemporaryFile(delete=False, suffix='.m4a') as temp_audio_file:
@@ -400,6 +398,7 @@ def handle_audio_message(event: MessageEvent):
         # Delete the temporary file
         if os.path.exists(temp_audio_file_path):
             os.remove(temp_audio_file_path)
+
             
 # Entry point to run the application
 if __name__ == "__main__":
