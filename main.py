@@ -111,14 +111,14 @@ def handle_follow_event(event):
             display_name = "there"
 
     # Prepare the greeting message
-    greeting_message = f"""Hello {display_name}!
-Welcome to {os.getenv('LINE_BOT_NAME', 'Our Service')} 😊
+    greeting_message = f"""Hello {display_name}!!
+Welcome to UniHelp 😊
 
 To get started, please set up your identity by answering these questions below so we can assist you better! ✨
 
 Let us know if you need any help along the way! We're here for you. 💬🫶
 
-Please enter your Country/Language (e.g., Japan/Japanese)."""
+【STEP 1】Please enter your country and native language (e.g., Japan, Japanese)."""
 
     # Send the greeting message
     with ApiClient(configuration) as api_client:
@@ -150,9 +150,9 @@ def handle_text_message(event: MessageEvent):
 
     # If user is in the setup process
     if user_state == "awaiting_country_language":
-        # Validate the format (Country/Language)
-        if "/" in text:
-            country_language = text.split("/", 1)
+        # Validate the format (Country, Language)
+        if "," in text:
+            country_language = text.split(",", 1)
             country = country_language[0].strip()
             language = country_language[1].strip()
 
@@ -162,12 +162,12 @@ def handle_text_message(event: MessageEvent):
             fdb.put(user_data_path, "state", "awaiting_major_grade")
 
             # Ask for Major/Grade
-            prompt_major_grade = "What's your major/grade? (e.g., Computer Science/26)"
+            prompt_major_grade = "【STEP 2】What's the major and grade you're in? (e.g., Computer Science, 3)"
             reply_messages = [TextMessage(text=prompt_major_grade)]
 
         else:
             # Invalid format, prompt again
-            prompt_retry = "Please enter your Country/Language in the format 'Country/Language' (e.g., Japan/Japanese)."
+            prompt_retry = "Please enter in the format 'Country, Language' (e.g., Japan, Japanese)."
             reply_messages = [TextMessage(text=prompt_retry)]
 
         # Send the reply
@@ -182,24 +182,48 @@ def handle_text_message(event: MessageEvent):
         return "OK"
 
     elif user_state == "awaiting_major_grade":
-        # Validate the format (Major/Grade)
-        if "/" in text:
-            major_grade = text.split("/", 1)
+        # Validate the format (Major, Grade)
+        if "," in text:
+            major_grade = text.split(",", 1)
             major = major_grade[0].strip()
             grade = major_grade[1].strip()
 
             # Save to Firebase
             fdb.put(user_data_path, "major", major)
             fdb.put(user_data_path, "grade", grade)
-            fdb.put(user_data_path, "state", "setup_complete")
+            fdb.put(user_data_path, "state", "awaiting_mode_selection")
 
-            # Acknowledge completion
-            completion_message = "Thank you! Your information has been saved. How can I assist you today?"
+            # Ask for mode preference
+            completion_message = "Thank you! Your information has been saved. Would you prefer normal or bilingual mode (showing both your native language and Traditional Chinese)? Type 0 for normal and 1 for bilingual."
             reply_messages = [TextMessage(text=completion_message)]
 
         else:
             # Invalid format, prompt again
-            prompt_retry = "Please enter your Major/Grade in the format 'Major/Grade' (e.g., Computer Science/26)."
+            prompt_retry = "Please enter in the format 'Major, Grade' (e.g., Computer Science, 3)."
+            reply_messages = [TextMessage(text=prompt_retry)]
+
+        # Send the reply
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=reply_messages,
+                )
+            )
+        return "OK"
+
+    elif user_state == "awaiting_mode_selection":
+        # Validate the user's input (0 or 1)
+        if text in ["0", "1"]:
+            fdb.put(user_data_path, "mode", text)
+            fdb.put(user_data_path, "state", "setup_complete")
+            # Acknowledge completion
+            completion_message = "Thank you! Your preference has been saved. How can I assist you today?"
+            reply_messages = [TextMessage(text=completion_message)]
+        else:
+            # Invalid input, prompt again
+            prompt_retry = "Please enter 0 for normal mode or 1 for bilingual mode."
             reply_messages = [TextMessage(text=prompt_retry)]
 
         # Send the reply
@@ -229,16 +253,16 @@ def handle_text_message(event: MessageEvent):
         language = fdb.get(user_data_path, "language") or "English"
         major = fdb.get(user_data_path, "major") or "your major"
         grade = fdb.get(user_data_path, "grade") or "your grade"
+        mode = fdb.get(user_data_path, "mode") or "0"  # default to normal mode
 
-        # Prepare custom prompt or system message
-        custom_system_message = f"Answer in {language}, and based on the student's major {major} and grade {grade}."
-
-        # Add the user's message and system message to the thread
-        # client.beta.threads.messages.create(
-        #     thread_id=thread_id,
-        #     role="system",
-        #     content=custom_system_message,
-        # )
+        # Prepare custom prompt or system message based on mode
+        if mode == "0":
+            custom_system_message = f"Answer in {language}, and based on the student's major {major} and grade {grade}."
+        elif mode == "1":
+            custom_system_message = f"Answer in both {language} and Traditional Chinese, and based on the student's major {major} and grade {grade}."
+        else:
+            # Default to normal mode if mode is not recognized
+            custom_system_message = f"Answer in {language}, and based on the student's major {major} and grade {grade}."
 
         # Combine custom system message with user's message
         combined_message = f"{custom_system_message}\n\n{text}"
