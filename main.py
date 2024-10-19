@@ -10,6 +10,7 @@ from PIL import Image
 from io import BytesIO
 import logging
 import os
+import whisper
 
 from fastapi import FastAPI, HTTPException, Request
 from linebot.v3 import WebhookHandler
@@ -521,7 +522,8 @@ def handle_audio_message(event):
 
         
         with open(temp_audio_path, 'rb') as audio_file:
-            transcription = openai.Audio.transcribe("whisper-1", audio_file)
+            model = whisper.load_model("turbo")
+            transcription = model.transcribe(audio_file)
             transcribed_text = transcription['text']
 
         logger.info(f"{transcribed_text}")
