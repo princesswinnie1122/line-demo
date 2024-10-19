@@ -367,7 +367,8 @@ def handle_audio_message(event):
     user_id = event.source.user_id
     reply_token = event.reply_token
     message_id = event.message.id
-
+     # 調用新的轉錄和翻譯函式
+    transcribe_and_translate_audio(user_id, message_id, reply_token)
     user_data_path = f"users/{user_id}"
     user_chat_path = f"chat/{user_id}"
     user_state = fdb.get(user_data_path, "state")
