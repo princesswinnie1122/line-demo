@@ -18,6 +18,8 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from dotenv import load_dotenv
 from firebase import firebase
 import uvicorn
+from openai import AssistantEventHandler
+from typing_extensions import override
 
 # Load environment variables from .env file
 if os.getenv("API_ENV") != "production":
@@ -52,6 +54,17 @@ assistant_id = os.getenv("OPENAI_ASSISTANT_ID")
 firebase_url = os.getenv("FIREBASE_URL")
 fdb = firebase.FirebaseApplication(firebase_url, None)
 
+# Define an event handler for streaming responses
+class StreamEventHandler(AssistantEventHandler):
+    def __init__(self):
+        self.final_response = ""  # Store the final assistant response
+
+    @override
+    def on_text_delta(self, delta, snapshot):
+        """Accumulate the assistant's streamed response."""
+        self.final_response += delta.value
+        print(delta.value, end="", flush=True)  # Log the response in real time
+
 # Health check endpoint
 @app.get("/health")
 async def health():
@@ -80,7 +93,7 @@ def handle_text_message(event: MessageEvent):
 
     if not thread_id:
         logger.info(f"No thread_id found for user {user_id}. Creating a new thread.")
-        thread = client.beta.threads.create()  # Use the OpenAI client here
+        thread = client.beta.threads.create()  # Create a new thread
         thread_id = thread.id
         fdb.put(user_chat_path, "thread_id", thread_id)
 
@@ -91,13 +104,19 @@ def handle_text_message(event: MessageEvent):
         content=text,
     )
 
-    # Run the thread with the assistant to generate a response
+    # Initialize the event handler
+    stream_handler = StreamEventHandler()
+
+    # Run the thread with the assistant and stream the response
     try:
-        run = client.beta.threads.runs.create(
+        with client.beta.threads.runs.stream(
             thread_id=thread_id,
             assistant_id=assistant_id,
-        )
-        assistant_reply = run.messages[-1].content
+            event_handler=stream_handler,
+        ) as stream:
+            stream.until_done()  # Wait until the stream completes
+
+        assistant_reply = stream_handler.final_response  # Get the accumulated response
 
     except Exception as e:
         logger.error(f"OpenAI API error: {e}")
