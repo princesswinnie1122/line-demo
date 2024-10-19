@@ -366,6 +366,7 @@ def handle_audio_message(event):
     user_id = event.source.user_id
     reply_token = event.reply_token
     message_id = event.message.id
+
     user_data_path = f"users/{user_id}"
     user_chat_path = f"chat/{user_id}"
     user_state = fdb.get(user_data_path, "state")
@@ -528,6 +529,7 @@ def handle_audio_message(event):
             )
 
         return "OK"
+
 
 
 # Image processing
