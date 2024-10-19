@@ -41,37 +41,53 @@ if not channel_secret or not channel_access_token:
 configuration = Configuration(access_token=channel_access_token)
 handler = WebhookHandler(channel_secret)
 
-# OpenAI configuration and client initialization
+# OpenAI configuration with organization and project parameters
 openai.api_key = os.getenv("OPENAI_API_KEY")
-client = openai.OpenAI()
+organization = os.getenv("OPENAI_ORGANIZATION")
+project = os.getenv("OPENAI_PROJECT")
 
-# Upload the 11310course.json file and enable both tools
-file = client.files.create(
-    file=open("db/11310course.json", "rb"),
-    purpose='assistants'
+client = openai.OpenAI(
+    organization=organization,
+    project=project
 )
 
-# Create an assistant with both file_search and code_interpreter tools
-assistant = client.beta.assistants.create(
-    name="Course Organizer",
-    instructions=(
-        "Organize useful course info in a clear list for students, "
-        "based on file search in detail with a form. Use code interpreter if needed."
-    ),
-    model="gpt-4o",
-    tools=[
-        {"type": "file_search"},
-        {"type": "code_interpreter"}
-    ],
-    tool_resources={
-        "code_interpreter": {
-            "file_ids": [file.id]
-        },
-        "file_search": {
-            "file_ids": [file.id]
+# Upload the file if not already uploaded
+try:
+    file = client.files.create(
+        file=open("db/11310course.json", "rb"),
+        purpose='assistants'
+    )
+    logger.info(f"File uploaded with ID: {file.id}")
+except Exception as e:
+    logger.error(f"File upload error: {e}")
+    sys.exit(1)  # Exit if the file upload fails
+
+# Create an assistant with both tools enabled
+try:
+    assistant = client.beta.assistants.create(
+        name="Course Organizer",
+        instructions=(
+            "Organize useful course info in a clear list for students, "
+            "based on file search in detail with a form. Use code interpreter if needed."
+        ),
+        model="gpt-4o",
+        tools=[
+            {"type": "file_search"},
+            {"type": "code_interpreter"}
+        ],
+        tool_resources={
+            "code_interpreter": {
+                "file_ids": [file.id]
+            },
+            "file_search": {
+                "file_ids": [file.id]
+            }
         }
-    }
-)
+    )
+    logger.info(f"Assistant created with ID: {assistant.id}")
+except Exception as e:
+    logger.error(f"Assistant creation error: {e}")
+    sys.exit(1)  # Exit if assistant creation fails
 
 # Firebase setup
 firebase_url = os.getenv("FIREBASE_URL")
@@ -80,7 +96,7 @@ fdb = firebase.FirebaseApplication(firebase_url, None)
 # Health check endpoint
 @app.get("/health")
 async def health():
-    return "ok"
+    return {"status": "ok"}
 
 # LINE webhook endpoint
 @app.post("/webhooks/line")
