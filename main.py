@@ -519,13 +519,10 @@ def handle_audio_message(event):
             for chunk in message_content.iter_content():
                 temp_audio_file.write(chunk)
             temp_audio_path = temp_audio_file.name
-
         
-        with open(temp_audio_path, 'rb') as audio_file:
-            model = whisper.load_model("turbo")
-            transcription = model.transcribe(audio_file)
-            transcribed_text = transcription['text']
-
+        model = whisper.load_model("turbo")
+        transcription = model.transcribe(temp_audio_path)
+        transcribed_text = transcription['text']
         logger.info(f"{transcribed_text}")
 
         thread_id = fdb.get(user_chat_path, "thread_id")
