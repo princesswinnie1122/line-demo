@@ -15,7 +15,14 @@ from linebot.v3.messaging import (
     MessagingApi,
 )
 from linebot.v3.exceptions import InvalidSignatureError
-from linebot.v3.webhooks import MessageEvent, TextMessageContent, FollowEvent
+from linebot.v3.webhooks import (
+    MessageEvent, 
+    FollowEvent, 
+    TextMessageContent, 
+    AudioMessageContent,
+    ImageMessageContent
+)
+
 from dotenv import load_dotenv
 from firebase import firebase
 import uvicorn
@@ -324,36 +331,104 @@ def handle_text_message(event: MessageEvent):
         return "OK"
 
 
-@handler.add(MessageEvent, message=AudioMessage)
-def handle_audio_message(event):
-    try:
-        # 下載音訊內容
-        audio_content = line_bot_api.get_message_content(event.message.id)
-        path = './temp.mp3'
-        with open(path, 'wb') as fd:
-            for chunk in audio_content.iter_content():
-                fd.write(chunk)
+@handler.add(MessageEvent, message=AudioMessageContent)
+def handle_audio_message(event: MessageEvent):
+    user_id = event.source.user_id
 
-        # 呼叫 Whisper API 進行語音轉錄
-        with open(path, 'rb') as audio_file:
-            response = openai.Audio.transcribe(
-                model='whisper-1',
-                file=audio_file
-            )
-            
-            # 回傳轉錄結果
+    try:
+        # Initialize LINE Messaging API client
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+
+            # Download audio content
+            message_id = event.message.id
+            message_content = line_bot_api.get_message_content(message_id)
+
+            # Save the audio file
+            path = './temp.m4a'  # LINE sends audio in m4a format
+            with open(path, 'wb') as fd:
+                for chunk in message_content:
+                    fd.write(chunk)
+
+            # Call OpenAI's Whisper API for transcription
+            with open(path, 'rb') as audio_file:
+                response = openai.Audio.transcribe(
+                    model='whisper-1',
+                    file=audio_file
+                )
+                
+            # Send the transcription result back to the user
             line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text=response['text'])
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=response['text'])],
+                )
             )
     except openai.error.OpenAIError as e:
-        print(f"Error: {e}")
+        logger.error(f"Error: {e}")
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text="抱歉，處理音訊時發生錯誤，請稍後再試。")],
+                )
+            )
+    return "OK"
+
+
+@handler.add(MessageEvent, message=ImageMessageContent)
+def handle_github_message(event):
+    image_content = b""
+    with ApiClient(configuration) as api_client:
+        line_bot_blob_api = MessagingApiBlob(api_client)
+        image_content = line_bot_blob_api.get_message_content(event.message.id)
+    image_data = check_image(b_image=image_content)
+    image_data = json.loads(image_data)
+    logger.info("---- Image handler JSON ----")
+    logger.info(image_data)
+    # Convert image content to a format suitable for OpenAI
+    # Here we assume you have a function to process the image and get a description
+    try:
+        # Send the image to OpenAI for analysis
+        # This is a placeholder; adjust based on your actual OpenAI API usage
+        image_analysis_response = openai.Image.create(
+            file=image_content,
+            model="dall-e"  # Replace with the appropriate model if needed
+        )
+
+        # Extract relevant information from the image analysis response
+        image_description = image_analysis_response.get("data", {}).get("description", "No description available.")
+
+        # Now, use the Assistant model to generate a response based on the image description
+        assistant_response = openai.ChatCompletion.create(
+            model="gpt-4o",  # Use the appropriate Assistant model
+            messages=[
+                {"role": "user", "content": f"Based on the image description: {image_description}"}
+            ]
+        )
+
+        # Extract the assistant's reply
+        assistant_reply = assistant_response['choices'][0]['message']['content']
+
+    except Exception as e:
+        logger.error(f"Error processing image with OpenAI: {e}")
+        assistant_reply = "Sorry, I couldn't process the image."
+
+    # Log the assistant's reply
+    logger.info("---- Assistant Reply ----")
+    logger.info(assistant_reply)
+
+    # Send the reply back to the user
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
         line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text="抱歉，處理音訊時發生錯誤，請稍後再試。")
+            ReplyMessageRequest(
+                replyToken=event.reply_token,
+                messages=[TextMessage(text=assistant_reply)]
+            )
         )
     return "OK"
-    
 
 # Entry point to run the application
 if __name__ == "__main__":
