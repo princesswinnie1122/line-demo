@@ -14,6 +14,14 @@ from linebot.v3.messaging import (
     ApiClient,
     MessagingApi,
 )
+from linebot.v3.webhooks import FollowEvent
+from linebot.v3.messaging.models import (
+    TextSendMessage,
+    QuickReply,
+    QuickReplyButton,
+    MessageAction,
+)
+
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from dotenv import load_dotenv
@@ -94,60 +102,155 @@ async def handle_callback(request: Request):
     except InvalidSignatureError:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
+
+@handler.add(FollowEvent)
+def handle_follow_event(event):
+    user_id = event.source.user_id
+
+    # Get user's display name (optional)
+    profile = None
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
+        try:
+            profile = line_bot_api.get_profile(user_id)
+            display_name = profile.display_name
+        except Exception as e:
+            logger.error(f"Error getting user profile: {e}")
+            display_name = "there"
+
+    # Prepare the greeting message
+    greeting_message = f"""Hello {display_name}!
+Welcome to {os.getenv('LINE_BOT_NAME', 'Our Service')} 😊
+
+To get started, please set up your identity by answering these questions below so we can assist you better! ✨
+
+Let us know if you need any help along the way! We're here for you. 💬🫶
+
+Please enter your Country/Language (e.g., Japan/Japanese)."""
+
+    # Send the greeting message
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
+        line_bot_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text=greeting_message)],
+            )
+        )
+
+    # Initialize the user's state in Firebase
+    user_data_path = f"users/{user_id}"
+    fdb.put(user_data_path, "state", "awaiting_country_language")
+
+
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event: MessageEvent):
     """Handle incoming messages."""
     text = event.message.text.strip()
     user_id = event.source.user_id
 
-    # Paths for user data in Firebase
-    user_chat_path = f"chat/{user_id}"
+    # Paths for Firebase
     user_data_path = f"users/{user_id}"
+    user_chat_path = f"chat/{user_id}"
 
-    # Retrieve or create thread ID
-    thread_id = fdb.get(user_chat_path, "thread_id")
-    if not thread_id:
-        logger.info(f"Creating a new thread for user {user_id}.")
-        thread = client.beta.threads.create()
-        thread_id = thread.id
-        fdb.put(user_chat_path, 'thread_id', thread_id)
+    # Retrieve user state from Firebase
+    user_state = fdb.get(user_data_path, "state")
 
-    # Retrieve user data
-    user_data = fdb.get(user_data_path, None) or {}
-    user_state = user_data.get('state', 'new')
+    # If user is in the setup process
+    if user_state == "awaiting_country_language":
+        # Validate the format (Country/Language)
+        if "/" in text:
+            country_language = text.split("/", 1)
+            country = country_language[0].strip()
+            language = country_language[1].strip()
 
-    # Initialize the response message
-    reply_message = ""
+            # Save to Firebase
+            fdb.put(user_data_path, "country", country)
+            fdb.put(user_data_path, "language", language)
+            fdb.put(user_data_path, "state", "awaiting_major_grade")
 
-    # State machine logic
-    if user_state == 'new':
-        # Expecting Country/Language input
-        if re.match(r"^\w+/\w+$", text):
-            # Save country and language
-            country, language = text.split('/')
-            user_data['country'] = country
-            user_data['language'] = language
-            user_data['state'] = 'complete'
-            fdb.put('users', user_id, user_data)
-            reply_message = "Thank you! You can now start asking questions."
+            # Ask for Major/Grade
+            prompt_major_grade = "What's your major/grade? (e.g., Computer Science/26)"
+            reply_messages = [TextMessage(text=prompt_major_grade)]
+
         else:
-            # Input format is incorrect
-            reply_message = "Please enter your Country/Language in the correct format (e.g., Japan/Japanese)."
+            # Invalid format, prompt again
+            prompt_retry = "Please enter your Country/Language in the format 'Country/Language' (e.g., Japan/Japanese)."
+            reply_messages = [TextMessage(text=prompt_retry)]
+
+        # Send the reply
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=reply_messages,
+                )
+            )
+        return "OK"
+
+    elif user_state == "awaiting_major_grade":
+        # Validate the format (Major/Grade)
+        if "/" in text:
+            major_grade = text.split("/", 1)
+            major = major_grade[0].strip()
+            grade = major_grade[1].strip()
+
+            # Save to Firebase
+            fdb.put(user_data_path, "major", major)
+            fdb.put(user_data_path, "grade", grade)
+            fdb.put(user_data_path, "state", "setup_complete")
+
+            # Acknowledge completion
+            completion_message = "Thank you! Your information has been saved. How can I assist you today?"
+            reply_messages = [TextMessage(text=completion_message)]
+
+        else:
+            # Invalid format, prompt again
+            prompt_retry = "Please enter your Major/Grade in the format 'Major/Grade' (e.g., Computer Science/26)."
+            reply_messages = [TextMessage(text=prompt_retry)]
+
+        # Send the reply
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=reply_messages,
+                )
+            )
+        return "OK"
 
     else:
-        # User has completed initial setup, proceed with assistant interaction
-        # Retrieve user info
-        country = user_data.get('country', '')
-        language = user_data.get('language', '')
+        # Regular message handling after setup
+        # Retrieve or create thread ID
+        thread_id = fdb.get(user_chat_path, "thread_id")
 
-        # Prepare assistant prompt with user info
-        assistant_prompt = f"Answer the following question in {language}, considering the user is from {country}."
+        if not thread_id:
+            logger.info(f"Creating a new thread for user {user_id}.")
+            thread = client.beta.threads.create()
+            thread_id = thread.id
+            fdb.put(user_chat_path, "thread_id", thread_id)
 
-        # Add the user's message to the thread with additional context
+        # Retrieve user information for prompt customization
+        country = fdb.get(user_data_path, "country") or "unknown country"
+        language = fdb.get(user_data_path, "language") or "English"
+        major = fdb.get(user_data_path, "major") or "your major"
+        grade = fdb.get(user_data_path, "grade") or "your grade"
+
+        # Prepare custom prompt or system message
+        custom_system_message = f"Answer in {language}, and based on the student's major {major} and grade {grade}."
+
+        # Add the user's message and system message to the thread
+        client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="system",
+            content=custom_system_message,
+        )
         client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
-            content=f"{assistant_prompt}\n\nUser: {text}",
+            content=text,
         )
 
         # Stream the assistant's response
@@ -171,21 +274,21 @@ def handle_text_message(event: MessageEvent):
         assistant_reply_cleaned = re.sub(r'【.*?】', '', assistant_reply)
 
         # Store the assistant's reply in Firebase (optional)
-        fdb.put_async(user_chat_path, 'assistant_reply', assistant_reply_cleaned)
+        fdb.put_async(user_chat_path, None, {"assistant_reply": assistant_reply_cleaned})
 
-        reply_message = assistant_reply_cleaned.strip()
-
-    # Send the reply to the user via LINE
-    with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-        line_bot_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[TextMessage(text=reply_message)],
+        # Send the cleaned reply to the user via LINE
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=assistant_reply_cleaned.strip())],
+                )
             )
-        )
 
-    return "OK"
+        return "OK"
+
+
 
 # Entry point to run the application
 if __name__ == "__main__":
