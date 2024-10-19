@@ -43,9 +43,35 @@ handler = WebhookHandler(channel_secret)
 
 # OpenAI configuration and client initialization
 openai.api_key = os.getenv("OPENAI_API_KEY")
-assistant_id = os.getenv("OPENAI_ASSISTANT_ID")
+client = openai.OpenAI()
 
-client = openai.OpenAI()  # Ensure the client is initialized here
+# Upload the 11310course.json file and enable both tools
+file = client.files.create(
+    file=open("db/11310course.json", "rb"),
+    purpose='assistants'
+)
+
+# Create an assistant with both file_search and code_interpreter tools
+assistant = client.beta.assistants.create(
+    name="Course Organizer",
+    instructions=(
+        "Organize useful course info in a clear list for students, "
+        "based on file search in detail with a form. Use code interpreter if needed."
+    ),
+    model="gpt-4o",
+    tools=[
+        {"type": "file_search"},
+        {"type": "code_interpreter"}
+    ],
+    tool_resources={
+        "code_interpreter": {
+            "file_ids": [file.id]
+        },
+        "file_search": {
+            "file_ids": [file.id]
+        }
+    }
+)
 
 # Firebase setup
 firebase_url = os.getenv("FIREBASE_URL")
@@ -79,7 +105,7 @@ def handle_text_message(event: MessageEvent):
 
     if not thread_id:
         logger.info(f"No thread_id found for user {user_id}. Creating a new thread.")
-        thread = client.beta.threads.create()  # Initialize the thread here
+        thread = client.beta.threads.create()  # Create a new thread
         thread_id = thread.id
         fdb.put(user_chat_path, "thread_id", thread_id)
 
@@ -88,17 +114,24 @@ def handle_text_message(event: MessageEvent):
         thread_id=thread_id,
         role="user",
         content=text,
+        attachments=[
+            {
+                "file_id": file.id,
+                "tools": [{"type": "code_interpreter"}]
+            }
+        ]
     )
 
     # Run the thread with the assistant to generate a response
     try:
         run = client.beta.threads.runs.create(
             thread_id=thread_id,
-            assistant_id=assistant_id,
+            assistant_id=assistant.id,
         )
-        assistant_reply = run.messages[-1].content
+        assistant_reply = run.messages[-1].content  # Extract the last response message
 
     except Exception as e:
+        # Log the full error response for debugging
         logger.error(f"OpenAI API error: {e}")
         assistant_reply = "Sorry, I couldn't process your request."
 
