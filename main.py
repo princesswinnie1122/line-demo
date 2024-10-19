@@ -11,7 +11,6 @@ from io import BytesIO
 import logging
 import os
 import whisper
-from googletrans import Translator
 
 from fastapi import FastAPI, HTTPException, Request
 from linebot.v3 import WebhookHandler
@@ -367,8 +366,6 @@ def handle_audio_message(event):
     user_id = event.source.user_id
     reply_token = event.reply_token
     message_id = event.message.id
-     # 調用新的轉錄和翻譯函式
-    transcribe_and_translate_audio(user_id, message_id, reply_token)
     user_data_path = f"users/{user_id}"
     user_chat_path = f"chat/{user_id}"
     user_state = fdb.get(user_data_path, "state")
@@ -532,49 +529,6 @@ def handle_audio_message(event):
 
         return "OK"
 
-#語音翻譯
-def transcribe_and_translate_audio(user_id: str, message_id: str, reply_token: str):
-    """轉錄錄音並根據用戶設定的語言進行翻譯。"""
-    # 取得使用者語言偏好
-    user_data_path = f"users/{user_id}"
-    preferred_language = fdb.get(user_data_path, "language") or "en"  # 預設為英文
-
-    # 取得錄音檔案
-    message_content = line_bot_api.get_message_content(message_id)
-    with tempfile.NamedTemporaryFile(suffix=".m4a", delete=False) as temp_audio_file:
-        for chunk in message_content.iter_content():
-            temp_audio_file.write(chunk)
-        temp_audio_path = temp_audio_file.name
-
-    # 使用 Whisper 模型轉錄錄音
-    model = whisper.load_model("base")  # 可根據需求替換模型
-    transcription = model.transcribe(temp_audio_path)
-    transcribed_text = transcription["text"]
-    logger.info(f"Transcribed Text: {transcribed_text}")
-
-    # 刪除臨時錄音檔案
-    os.remove(temp_audio_path)
-
-    # 使用 googletrans 庫進行翻譯
-    translator = Translator()
-    translated_text = translator.translate(transcribed_text, dest=preferred_language).text
-    logger.info(f"Translated Text: {translated_text}")
-
-    # 組合回覆訊息
-    reply_message = (
-        f"Here is the transcription:\n{transcribed_text}\n\n"
-        f"And the translation to {preferred_language}:\n{translated_text}"
-    )
-
-    # 傳送回覆訊息給使用者
-    with ApiClient(configuration) as api_client:
-        line_bot_api_2 = MessagingApi(api_client)
-        line_bot_api_2.reply_message(
-            ReplyMessageRequest(
-                reply_token=reply_token,
-                messages=[TextMessage(text=reply_message)],
-            )
-        )
 
 # Image processing
 def check_image(url=None, b_image=None):
