@@ -165,7 +165,9 @@ def handle_user_message(event: MessageEvent, text: str):
 def handle_text_message(event: MessageEvent):
     """Handle incoming messages."""
     text = event.message.text.strip()
+    user_id = event.source.user_id
     handle_user_message(event, text)
+
 
     # Paths for Firebase
     user_data_path = f"users/{user_id}"
@@ -398,7 +400,7 @@ def handle_audio_message(event: MessageEvent):
         # Delete the temporary file
         if os.path.exists(temp_audio_file_path):
             os.remove(temp_audio_file_path)
-
+            
 # Entry point to run the application
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "test":
