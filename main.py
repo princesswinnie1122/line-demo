@@ -4,6 +4,7 @@ import os
 import sys
 import openai
 import re
+import tempfile
 
 from fastapi import FastAPI, HTTPException, Request
 from linebot.v3 import WebhookHandler
@@ -146,11 +147,25 @@ Let us know if you need any help along the way! We're here for you. 💬🫶
     fdb.put(user_data_path, "state", "awaiting_country_language")
 
 
+
+def handle_user_message(event: MessageEvent, text: str):
+    """Unified message handling for text and transcribed audio."""
+    user_id = event.source.user_id
+    reply_token = event.reply_token
+
+    # Paths for Firebase
+    user_data_path = f"users/{user_id}"
+    user_chat_path = f"chat/{user_id}"
+
+    # Retrieve user state from Firebase
+    user_state = fdb.get(user_data_path, "state")
+
+
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event: MessageEvent):
     """Handle incoming messages."""
     text = event.message.text.strip()
-    user_id = event.source.user_id
+    handle_user_message(event, text)
 
     # Paths for Firebase
     user_data_path = f"users/{user_id}"
@@ -334,101 +349,55 @@ def handle_text_message(event: MessageEvent):
 @handler.add(MessageEvent, message=AudioMessageContent)
 def handle_audio_message(event: MessageEvent):
     user_id = event.source.user_id
+    message_id = event.message.id
 
-    try:
-        # Initialize LINE Messaging API client
-        with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-
-            # Download audio content
-            message_id = event.message.id
-            message_content = line_bot_api.get_message_content(message_id)
-
-            # Save the audio file
-            path = './temp.m4a'  # LINE sends audio in m4a format
-            with open(path, 'wb') as fd:
-                for chunk in message_content:
-                    fd.write(chunk)
-
-            # Call OpenAI's Whisper API for transcription
-            with open(path, 'rb') as audio_file:
-                response = openai.Audio.transcribe(
-                    model='whisper-1',
-                    file=audio_file
-                )
-                
-            # Send the transcription result back to the user
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text=response['text'])],
-                )
-            )
-    except openai.error.OpenAIError as e:
-        logger.error(f"Error: {e}")
-        with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text="抱歉，處理音訊時發生錯誤，請稍後再試。")],
-                )
-            )
-    return "OK"
-
-
-@handler.add(MessageEvent, message=ImageMessageContent)
-def handle_github_message(event):
-    image_content = b""
-    with ApiClient(configuration) as api_client:
-        line_bot_blob_api = MessagingApiBlob(api_client)
-        image_content = line_bot_blob_api.get_message_content(event.message.id)
-    image_data = check_image(b_image=image_content)
-    image_data = json.loads(image_data)
-    logger.info("---- Image handler JSON ----")
-    logger.info(image_data)
-    # Convert image content to a format suitable for OpenAI
-    # Here we assume you have a function to process the image and get a description
-    try:
-        # Send the image to OpenAI for analysis
-        # This is a placeholder; adjust based on your actual OpenAI API usage
-        image_analysis_response = openai.Image.create(
-            file=image_content,
-            model="dall-e"  # Replace with the appropriate model if needed
-        )
-
-        # Extract relevant information from the image analysis response
-        image_description = image_analysis_response.get("data", {}).get("description", "No description available.")
-
-        # Now, use the Assistant model to generate a response based on the image description
-        assistant_response = openai.ChatCompletion.create(
-            model="gpt-4o",  # Use the appropriate Assistant model
-            messages=[
-                {"role": "user", "content": f"Based on the image description: {image_description}"}
-            ]
-        )
-
-        # Extract the assistant's reply
-        assistant_reply = assistant_response['choices'][0]['message']['content']
-
-    except Exception as e:
-        logger.error(f"Error processing image with OpenAI: {e}")
-        assistant_reply = "Sorry, I couldn't process the image."
-
-    # Log the assistant's reply
-    logger.info("---- Assistant Reply ----")
-    logger.info(assistant_reply)
-
-    # Send the reply back to the user
+    # Get the audio content from LINE's server
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
-        line_bot_api.reply_message(
-            ReplyMessageRequest(
-                replyToken=event.reply_token,
-                messages=[TextMessage(text=assistant_reply)]
+        message_content = line_bot_api.get_message_content(message_id)
+        audio_content = message_content.read()
+
+    # Save the audio content to a temporary file
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.m4a') as temp_audio_file:
+        temp_audio_file.write(audio_content)
+        temp_audio_file_path = temp_audio_file.name
+
+    try:
+        # Transcribe the audio using OpenAI's Whisper API
+        audio_file = open(temp_audio_file_path, 'rb')
+        transcript = openai.Audio.transcribe('whisper-1', audio_file)
+        transcribed_text = transcript['text']
+        audio_file.close()
+
+        # Use the transcribed text as input to your assistant
+        if transcribed_text:
+            handle_user_message(event, transcribed_text)
+        else:
+            # Send an error message to the user
+            error_message = "Sorry, I couldn't understand your audio message. Please try again."
+            with ApiClient(configuration) as api_client:
+                line_bot_api = MessagingApi(api_client)
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=error_message)],
+                    )
+                )
+    except Exception as e:
+        logger.error(f"Transcription error: {e}")
+        error_message = "An error occurred while processing your audio message. Please try again later."
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=error_message)],
+                )
             )
-        )
-    return "OK"
+    finally:
+        # Delete the temporary file
+        if os.path.exists(temp_audio_file_path):
+            os.remove(temp_audio_file_path)
 
 # Entry point to run the application
 if __name__ == "__main__":
