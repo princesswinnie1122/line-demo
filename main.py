@@ -324,6 +324,36 @@ def handle_text_message(event: MessageEvent):
         return "OK"
 
 
+@handler.add(MessageEvent, message=AudioMessage)
+def handle_audio_message(event):
+    try:
+        # 下載音訊內容
+        audio_content = line_bot_api.get_message_content(event.message.id)
+        path = './temp.mp3'
+        with open(path, 'wb') as fd:
+            for chunk in audio_content.iter_content():
+                fd.write(chunk)
+
+        # 呼叫 Whisper API 進行語音轉錄
+        with open(path, 'rb') as audio_file:
+            response = openai.Audio.transcribe(
+                model='whisper-1',
+                file=audio_file
+            )
+            
+            # 回傳轉錄結果
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text=response['text'])
+            )
+    except openai.error.OpenAIError as e:
+        print(f"Error: {e}")
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text="抱歉，處理音訊時發生錯誤，請稍後再試。")
+        )
+    return "OK"
+    
 
 # Entry point to run the application
 if __name__ == "__main__":
