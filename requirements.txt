@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 line-bot-sdk
+google.generativeai
 openai
 grpcio
 pillow

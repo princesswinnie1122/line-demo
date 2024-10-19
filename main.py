@@ -5,6 +5,11 @@ import sys
 import openai
 import re
 import tempfile
+import requests
+from PIL import Image
+from io import BytesIO
+import logging
+
 
 from fastapi import FastAPI, HTTPException, Request
 from linebot.v3 import WebhookHandler
@@ -14,6 +19,7 @@ from linebot.v3.messaging import (
     TextMessage,
     ApiClient,
     MessagingApi,
+    MessagingApiBlob,
 )
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.webhooks import (
@@ -28,6 +34,7 @@ from dotenv import load_dotenv
 from firebase import firebase
 import uvicorn
 from openai import AssistantEventHandler
+import google.generativeai as genai
 from typing_extensions import override
 
 # Load environment variables from .env file
@@ -124,7 +131,7 @@ Welcome to UniHelp 😊
 
 To get started, please set up your identity by answering these questions below so we can assist you better! ✨
 
-Let us know if you need any help along the way! We're here for you. 💬🫶"""
+Let us know if you need any help along the way! We're here for you. 🫶"""
 
     greeting_message_part2 = """【STEP 1】Please enter your country and native language (e.g., Japan, Japanese)."""
 
@@ -220,7 +227,10 @@ def handle_text_message(event: MessageEvent):
             fdb.put(user_data_path, "state", "awaiting_mode_selection")
 
             # Ask for mode preference
-            completion_message = "Thank you! Your information has been saved. Would you prefer normal or bilingual mode (showing both your native language and Traditional Chinese)? Type 0 for normal and 1 for bilingual."
+            completion_message = """Thank you! Your information has been saved. 
+            Would you prefer normal or bilingual mode (showing both your native language and Traditional Chinese)?
+            Type 0 for normal and 1 for bilingual.💬"""
+
             reply_messages = [TextMessage(text=completion_message)]
 
         else:
@@ -345,7 +355,7 @@ def handle_text_message(event: MessageEvent):
 
         return "OK"
 
-
+'''
 @handler.add(MessageEvent, message=AudioMessageContent)
 def handle_audio_message(event: MessageEvent):
     user_id = event.source.user_id
@@ -398,8 +408,202 @@ def handle_audio_message(event: MessageEvent):
         # Delete the temporary file
         if os.path.exists(temp_audio_file_path):
             os.remove(temp_audio_file_path)
+'''
 
-            
+
+# Image processing
+def check_image(
+    url=None,
+    b_image=None
+):
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+    if url is not None:
+        response = requests.get(url)
+        if response.status_code == 200:
+            image_data = response.content
+    elif b_image is not None:
+        image_data = b_image
+    else:
+        return "None"
+    logger.info(f"URL: {url} \n Image: {b_image}")
+    image = Image.open(BytesIO(image_data))
+
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    response = model.generate_content(
+        [
+            "Extracted the words in the image and provide a summary of the image.",
+            image,
+        ]
+    )
+    return response.text
+
+
+
+@handler.add(MessageEvent, message=ImageMessageContent)
+def handle_github_message(event):
+
+    user_id = event.source.user_id
+    user_data_path = f"users/{user_id}"
+    user_chat_path = f"chat/{user_id}"
+    user_state = fdb.get(user_data_path, "state")
+
+    image_content = b""
+    with ApiClient(configuration) as api_client:
+        line_bot_blob_api = MessagingApiBlob(api_client)
+        image_content = line_bot_blob_api.get_message_content(event.message.id)
+    image_data = check_image(b_image=image_content)
+
+    # If user is in the setup process
+    if user_state == "awaiting_country_language":
+        # Validate the format (Country, Language)
+        if "," in text:
+            country_language = text.split(",", 1)
+            country = country_language[0].strip()
+            language = country_language[1].strip()
+
+            # Save to Firebase
+            fdb.put(user_data_path, "country", country)
+            fdb.put(user_data_path, "language", language)
+            fdb.put(user_data_path, "state", "awaiting_major_grade")
+
+            # Ask for Major/Grade
+            prompt_major_grade = "【STEP 2】What's the major and grade you're in? (e.g., Computer Science, 3)"
+            reply_messages = [TextMessage(text=prompt_major_grade)]
+
+        else:
+            # Invalid format, prompt again
+            prompt_retry = "Please enter in the format 'Country, Language' (e.g., Japan, Japanese)."
+            reply_messages = [TextMessage(text=prompt_retry)]
+
+        # Send the reply
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=reply_messages,
+                )
+            )
+        return "OK"
+
+    elif user_state == "awaiting_major_grade":
+        # Validate the format (Major, Grade)
+        if "," in text:
+            major_grade = text.split(",", 1)
+            major = major_grade[0].strip()
+            grade = major_grade[1].strip()
+
+            # Save to Firebase
+            fdb.put(user_data_path, "major", major)
+            fdb.put(user_data_path, "grade", grade)
+            fdb.put(user_data_path, "state", "awaiting_mode_selection")
+
+            # Ask for mode preference
+            completion_message = """Thank you! Your information has been saved. 
+            Would you prefer normal or bilingual mode (showing both your native language and Traditional Chinese)?
+            Type 0 for normal and 1 for bilingual.💬"""
+
+            reply_messages = [TextMessage(text=completion_message)]
+
+        else:
+            # Invalid format, prompt again
+            prompt_retry = "Please enter in the format 'Major, Grade' (e.g., Computer Science, 3)."
+            reply_messages = [TextMessage(text=prompt_retry)]
+
+        # Send the reply
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=reply_messages,
+                )
+            )
+        return "OK"
+
+    elif user_state == "awaiting_mode_selection":
+        # Validate the user's input (0 or 1)
+        if text in ["0", "1"]:
+            fdb.put(user_data_path, "mode", text)
+            fdb.put(user_data_path, "state", "setup_complete")
+
+            # Acknowledge completion
+            if text == "1":
+                # User selected bilingual mode
+                completion_message = (
+                    "Thank you! Your preference has been saved. How can I assist you today?\n"
+                    "謝謝！您的偏好已保存。請問今天有什麼可以幫助您的？"
+                )
+            else:
+                # User selected normal mode
+                completion_message = "Thank you! Your preference has been saved. How can I assist you today?"
+
+            reply_messages = [TextMessage(text=completion_message)]
+        else:
+            # Invalid input, prompt again
+            prompt_retry = "Please enter 0 for normal mode or 1 for bilingual mode."
+            reply_messages = [TextMessage(text=prompt_retry)]
+
+        # Send the reply
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=reply_messages,
+                )
+            )
+        return "OK"
+
+    else:
+        thread_id = fdb.get(user_chat_path, "thread_id")
+        if not thread_id:
+            logger.info(f"Creating a new thread for user {user_id}.")
+            thread = client.beta.threads.create()
+            thread_id = thread.id
+            fdb.put(user_chat_path, "thread_id", thread_id)
+
+        client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=image_data,
+        )
+
+        event_handler = EventHandler()
+
+        try:
+            with client.beta.threads.runs.stream(
+                thread_id=thread_id,
+                assistant_id=assistant_id,
+                event_handler=event_handler,
+            ) as stream:
+                stream.until_done()
+
+            assistant_reply = event_handler.final_response
+
+        except Exception as e:
+            logger.error(f"OpenAI API error: {e}")
+            assistant_reply = "Sorry, I couldn't process your request."
+
+        # Remove content within 【】 from the assistant's reply
+        assistant_reply_cleaned = re.sub(r'【.*?】', '', assistant_reply)
+
+        # Store the assistant's reply in Firebase (optional)
+        fdb.put_async(user_chat_path, None, {"assistant_reply": assistant_reply_cleaned})
+
+        # Send the cleaned reply to the user via LINE
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=assistant_reply_cleaned.strip())],
+                )
+            )
+
+        return "OK"
+    
+    
 # Entry point to run the application
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "test":
