@@ -173,9 +173,7 @@ def handle_text_message(event: MessageEvent):
     text = event.message.text.strip()
     user_id = event.source.user_id
     handle_user_message(event, text)
-    if text == "User Setup":
-        # 執行使用者重設
-        reset_user_to_initial_state(user_id, event.reply_token)
+
 
     # Paths for Firebase
     user_data_path = f"users/{user_id}"
@@ -360,7 +358,7 @@ Type "0" for normal and "1" for bilingual.💬"""
 
         return "OK"
 
-
+'''
 def reset_user_to_initial_state(user_id: str, reply_token: str):
     """重設使用者資料，並模擬追蹤事件（FollowEvent）。"""
     user_data_path = f"users/{user_id}"
@@ -383,6 +381,20 @@ def reset_user_to_initial_state(user_id: str, reply_token: str):
     # 呼叫 handle_follow_event，模擬使用者剛加入時的情況
     handle_follow_event(mock_event)
 
+
+# 處理 TextMessage 事件，偵測 reset 指令
+@handler.add(MessageEvent, message=TextMessageContent)
+def handle_text_message(event: MessageEvent):
+    text = event.message.text.strip().lower()
+    user_id = event.source.user_id
+
+    if text == "User Setup":
+        # 執行使用者重設
+        reset_user_to_initial_state(user_id, event.reply_token)
+    else:
+        # 處理其他訊息
+        handle_user_message(event, text)
+'''
 
 
 
