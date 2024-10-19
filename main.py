@@ -445,10 +445,7 @@ def handle_audio_message(event: MessageEvent):
 
 
 # Image processing
-def check_image(
-    url=None,
-    b_image=None
-):
+def check_image(url=None, b_image=None):
     genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
     if url is not None:
         response = requests.get(url)
@@ -464,7 +461,7 @@ def check_image(
     model = genai.GenerativeModel("gemini-1.5-flash")
     response = model.generate_content(
         [
-            "Extracted the words in the image and provide a summary of the image.",
+            "Extracted the words in the image, then provide a summary of the whole image.",
             image,
         ]
     )
@@ -480,12 +477,6 @@ def handle_github_message(event):
     user_data_path = f"users/{user_id}"
     user_chat_path = f"chat/{user_id}"
     user_state = fdb.get(user_data_path, "state")
-
-    image_content = b""
-    with ApiClient(configuration) as api_client:
-        line_bot_blob_api = MessagingApiBlob(api_client)
-        image_content = line_bot_blob_api.get_message_content(event.message.id)
-    image_data = check_image(b_image=image_content)
 
     # If user is in the setup process
     if user_state == "awaiting_country_language":
@@ -533,9 +524,7 @@ def handle_github_message(event):
             fdb.put(user_data_path, "state", "awaiting_mode_selection")
 
             # Ask for mode preference
-            completion_message = """Thank you! Your information has been saved. 
-            Would you prefer normal or bilingual mode (showing both your native language and Traditional Chinese)?
-            Type 0 for normal and 1 for bilingual.💬"""
+            completion_message = """Thank you! Your information has been saved. Would you prefer normal or bilingual mode (showing both your native language and Traditional Chinese)? Type 0 for normal and 1 for bilingual.💬"""
 
             reply_messages = [TextMessage(text=completion_message)]
 
@@ -590,6 +579,13 @@ def handle_github_message(event):
         return "OK"
 
     else:
+        image_content = b""
+        with ApiClient(configuration) as api_client:
+            line_bot_blob_api = MessagingApiBlob(api_client)
+            image_content = line_bot_blob_api.get_message_content(event.message.id)
+        image_data = check_image(b_image=image_content)
+        logger.info(f"{image_data}")
+
         thread_id = fdb.get(user_chat_path, "thread_id")
         if not thread_id:
             logger.info(f"Creating a new thread for user {user_id}.")
