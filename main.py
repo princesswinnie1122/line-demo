@@ -358,38 +358,26 @@ Type "n" for normal and "b" for bilingual.💬"""
         return "OK"
 
 def reset_user_to_initial_state(user_id: str, reply_token: str):
-    """重設使用者資料，並模擬剛加入時的初始化狀態。"""
+    """重設使用者資料，並模擬追蹤事件（FollowEvent）。"""
     user_data_path = f"users/{user_id}"
     user_chat_path = f"chat/{user_id}"
 
-    # 刪除使用者的所有資料和聊天記錄
+    # 刪除該使用者的所有資料和聊天記錄
     fdb.delete(user_data_path, None)
     fdb.delete(user_chat_path, None)
 
     # 初始化 Firebase 狀態為等待輸入國家和語言
     fdb.put(user_data_path, "state", "awaiting_country_language")
 
-    # 歡迎訊息和初始化問題
-    greeting_message_part1 = f"""Hello! 👋  
-Welcome to UniHelp 😊  
+    # 模擬一個 FollowEvent 事件並傳遞給 handle_follow_event
+    mock_event = FollowEvent(
+        source=event.source,  # 包含 user_id 等相關資料
+        reply_token=reply_token,
+        timestamp=None  # 可選，設為 None 或 datetime.now().timestamp()
+    )
 
-We’ve reset your information to start fresh. Let's set up your identity again to assist you better! ✨"""
-
-    greeting_message_part2 = """【STEP 1】Please enter your country and native language (e.g., Japan, Japanese)."""
-
-    # 發送初始化訊息
-    with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-        line_bot_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=reply_token,
-                messages=[
-                    TextMessage(text="Your data has been reset successfully."),
-                    TextMessage(text=greeting_message_part1),
-                    TextMessage(text=greeting_message_part2),
-                ],
-            )
-        )
+    # 呼叫 handle_follow_event，模擬使用者剛加入時的情況
+    handle_follow_event(mock_event)
 
 
 # 處理 TextMessage 事件，偵測 reset 指令
