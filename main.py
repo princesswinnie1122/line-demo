@@ -55,8 +55,9 @@ firebase_url = os.getenv("FIREBASE_URL")
 fdb = firebase.FirebaseApplication(firebase_url, None)
 
 # Define an EventHandler for streaming responses
-class CustomEventHandler(AssistantEventHandler):
+class EventHandler(AssistantEventHandler):
     def __init__(self):
+        super().__init__()  # Fix: Call the superclass initializer
         self.final_response = ""
 
     @override
@@ -74,6 +75,7 @@ class CustomEventHandler(AssistantEventHandler):
     def on_tool_call_created(self, tool_call):
         """Log when a tool call is made."""
         print(f"\nassistant > Tool call: {tool_call.type}\n", flush=True)
+
 
 # Health check endpoint
 @app.get("/health")
@@ -116,7 +118,7 @@ def handle_text_message(event: MessageEvent):
     )
 
     # Stream the assistant's response
-    event_handler = CustomEventHandler()
+    event_handler = EventHandler()
 
     try:
         with client.beta.threads.runs.stream(
