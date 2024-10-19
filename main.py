@@ -519,11 +519,6 @@ def handle_audio_message(event):
             temp_audio_file.write(audio_content)
             temp_audio_path = temp_audio_file.name
 
-        # Save the temporary audio file to Firebase storage or database
-        with open(temp_audio_path, "rb") as audio_file:
-            # Convert the file to binary data and save it in Firebase
-            fdb.put(f"audio/{user_id}", message_id, audio_file.read())
-
         # Convert the audio to text using Whisper API
         with open(temp_audio_path, "rb") as audio_file:
             whisper_response = openai.Audio.transcribe("whisper-1", audio_file)
@@ -729,9 +724,25 @@ def handle_image_message(event):
             thread_id = thread.id
             fdb.put(user_chat_path, "thread_id", thread_id)
 
+        # Retrieve user information for prompt customization
+        country = fdb.get(user_data_path, "country") or "unknown country"
+        language = fdb.get(user_data_path, "language") or "English"
+        major = fdb.get(user_data_path, "major") or "your major"
+        grade = fdb.get(user_data_path, "grade") or "your grade"
+        mode = fdb.get(user_data_path, "mode") or "0"  # default to normal mode
 
-        custom_system_message = f"Organize content of the image into notes. Do not use markdown bold formatting (**). Do not start with 'The image shows' or 'This image depicts'. Here's the description of the image:"
-        combined_message = f"{custom_system_message}\n\n{image_data}"
+        # Prepare custom prompt or system message based on mode
+        if mode == "0":
+            custom_system_message = f"Answer in {language} based on the student's major {major} and grade {grade}."
+        elif mode == "1":
+            custom_system_message = f"Answer in both {language} based on the student's major {major} and grade {grade}. Then answer a translated version of Traditional Chinese again. (Do not mention words like 'Traditional Chinese' or 'Translate' in your answer.)"
+        else:
+            # Default to normal mode if mode is not recognized
+            custom_system_message = f"Answer in {language}, and based on the student's major {major} and grade {grade}."
+
+
+        prompt = f"Organize content of the image into notes. Do not use markdown bold formatting (**). Do not start with 'The image shows' or 'This image depicts'. Here's the description of the image:"
+        combined_message = f"{custom_system_message}\n\n{prompt}\n\n{image_data}"
 
         client.beta.threads.messages.create(
             thread_id=thread_id,
