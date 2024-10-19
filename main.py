@@ -58,7 +58,7 @@ fdb = firebase.FirebaseApplication(firebase_url, None)
 # Define an EventHandler for streaming responses
 class EventHandler(AssistantEventHandler):
     def __init__(self):
-        super().__init__()  # Fix: Call the superclass initializer
+        super().__init__()
         self.final_response = ""
 
     @override
@@ -76,7 +76,6 @@ class EventHandler(AssistantEventHandler):
     def on_tool_call_created(self, tool_call):
         """Log when a tool call is made."""
         print(f"\nassistant > Tool call: {tool_call.type}\n", flush=True)
-
 
 # Health check endpoint
 @app.get("/health")
@@ -98,63 +97,111 @@ async def handle_callback(request: Request):
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event: MessageEvent):
     """Handle incoming messages."""
-    text = event.message.text
+    text = event.message.text.strip()
     user_id = event.source.user_id
 
-    # Retrieve or create thread ID
+    # Paths for user data in Firebase
     user_chat_path = f"chat/{user_id}"
-    thread_id = fdb.get(user_chat_path, "thread_id")
+    user_data_path = f"users/{user_id}"
 
+    # Retrieve or create thread ID
+    thread_id = fdb.get(user_chat_path, "thread_id")
     if not thread_id:
         logger.info(f"Creating a new thread for user {user_id}.")
         thread = client.beta.threads.create()
         thread_id = thread.id
         fdb.put(user_chat_path, "thread_id", thread_id)
 
-    # Add the user's message to the thread
-    client.beta.threads.messages.create(
-        thread_id=thread_id,
-        role="user",
-        content=text,
-    )
+    # Retrieve user data
+    user_data = fdb.get(user_data_path, None) or {}
+    user_state = user_data.get('state', 'new')
 
-    # Stream the assistant's response
-    event_handler = EventHandler()
+    # Initialize the response message
+    reply_message = ""
 
-    try:
-        with client.beta.threads.runs.stream(
+    # State machine logic
+    if user_state == 'new':
+        # User is new, ask for country/language
+        reply_message = "Welcome! Please enter your Country/Language (e.g., Japan/Japanese)."
+        user_data['state'] = 'waiting_for_country_language'
+        fdb.put(user_data_path, None, user_data)
+
+    elif user_state == 'waiting_for_country_language':
+        # Expecting Country/Language input
+        if re.match(r"^\w+/\w+$", text):
+            country, language = text.split('/')
+            user_data['country'] = country
+            user_data['language'] = language
+            user_data['state'] = 'waiting_for_major_grade'
+            fdb.put(user_data_path, None, user_data)
+            reply_message = "Thank you! What's your major/grade? Please enter in the format Major/Grade (e.g., Computer Science/26)."
+        else:
+            reply_message = "Please enter your Country/Language in the correct format (e.g., Japan/Japanese)."
+
+    elif user_state == 'waiting_for_major_grade':
+        # Expecting Major/Grade input
+        if re.match(r"^\w+/\d+$", text):
+            major, grade = text.split('/')
+            user_data['major'] = major
+            user_data['grade'] = grade
+            user_data['state'] = 'complete'
+            fdb.put(user_data_path, None, user_data)
+            reply_message = "Thank you! You can now start asking questions."
+        else:
+            reply_message = "Please enter your Major/Grade in the correct format (e.g., Computer Science/26)."
+
+    else:
+        # User has completed onboarding, proceed with assistant interaction
+        # Prepare assistant prompt with user info
+        country = user_data.get('country', '')
+        language = user_data.get('language', '')
+        major = user_data.get('major', '')
+        grade = user_data.get('grade', '')
+
+        # Add the user's message to the thread with additional context
+        assistant_prompt = f"Answer the following question in {language}, based on a {grade}-year-old {major} student from {country}."
+        client.beta.threads.messages.create(
             thread_id=thread_id,
-            assistant_id=assistant_id,
-            event_handler=event_handler,
-        ) as stream:
-            stream.until_done()
+            role="user",
+            content=f"{assistant_prompt}\n\nUser: {text}",
+        )
 
-        assistant_reply = event_handler.final_response
+        # Stream the assistant's response
+        event_handler = EventHandler()
 
-    except Exception as e:
-        logger.error(f"OpenAI API error: {e}")
-        assistant_reply = "Sorry, I couldn't process your request."
+        try:
+            with client.beta.threads.runs.stream(
+                thread_id=thread_id,
+                assistant_id=assistant_id,
+                event_handler=event_handler,
+            ) as stream:
+                stream.until_done()
 
-    assistant_reply = event_handler.final_response
+            assistant_reply = event_handler.final_response
 
-    # Remove content within 【】 from the assistant's reply
-    assistant_reply_cleaned = re.sub(r'【.*?】', '', assistant_reply)
+        except Exception as e:
+            logger.error(f"OpenAI API error: {e}")
+            assistant_reply = "Sorry, I couldn't process your request."
 
-    # Store the assistant's reply in Firebase (optional, if you want to store the cleaned version)
-    fdb.put_async(user_chat_path, None, {"assistant_reply": assistant_reply_cleaned})
+        # Remove content within 【】 from the assistant's reply
+        assistant_reply_cleaned = re.sub(r'【.*?】', '', assistant_reply)
 
-    # Send the cleaned reply to the user via LINE
+        # Store the assistant's reply in Firebase (optional)
+        fdb.put_async(user_chat_path, None, {"assistant_reply": assistant_reply_cleaned})
+
+        reply_message = assistant_reply_cleaned.strip()
+
+    # Send the reply to the user via LINE
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         line_bot_api.reply_message(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[TextMessage(text=assistant_reply_cleaned.strip())],  # Use .strip() to remove any leading/trailing whitespace
+                messages=[TextMessage(text=reply_message)],
             )
         )
 
     return "OK"
-
 
 # Entry point to run the application
 if __name__ == "__main__":
