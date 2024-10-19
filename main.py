@@ -437,6 +437,51 @@ def check_image(
     )
     return response.text
 
+def reset_user_to_initial_state(user_id: str, reply_token: str):
+    """Reset the user's data to the initial state and send the welcome message."""
+    user_data_path = f"users/{user_id}"
+    user_chat_path = f"chat/{user_id}"
+
+    # 刪除該使用者的資料和聊天記錄
+    fdb.delete(user_data_path, None)
+    fdb.delete(user_chat_path, None)
+
+    # 初始化狀態，回到「等待國家和語言」的階段
+    fdb.put(user_data_path, "state", "awaiting_country_language")
+
+    # 傳送歡迎訊息和初始化問題
+    greeting_message_part1 = f"""Hello! 👋  
+Welcome back to UniHelp 😊  
+
+We’ve reset your information to start fresh. Let's set up your identity again to assist you better! ✨"""
+
+    greeting_message_part2 = """【STEP 1】Please enter your country and native language (e.g., Japan, Japanese)."""
+
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
+        line_bot_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=reply_token,
+                messages=[
+                    TextMessage(text="Your data has been reset successfully."),
+                    TextMessage(text=greeting_message_part1),
+                    TextMessage(text=greeting_message_part2),
+                ],
+            )
+        )
+
+# 處理 TextMessage 事件，偵測 reset 指令
+@handler.add(MessageEvent, message=TextMessageContent)
+def handle_text_message(event: MessageEvent):
+    text = event.message.text.strip().lower()
+    user_id = event.source.user_id
+
+    if text == "User Setup":
+        # 執行使用者重設
+        reset_user_to_initial_state(user_id, event.reply_token)
+    else:
+        # 處理其他訊息
+        handle_user_message(event, text)
 
 
 @handler.add(MessageEvent, message=ImageMessageContent)
