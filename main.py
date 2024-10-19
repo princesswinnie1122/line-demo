@@ -510,22 +510,19 @@ def handle_audio_message(event):
         return "OK"
 
     else:
-        with ApiClient(configuration) as api_client:
-            line_bot_blob_api = MessagingApiBlob(api_client)
-            audio_content = line_bot_blob_api.get_message_content(message_id)
+        message_content = line_bot_api.get_message_content(event.message.id)
+        
 
-        # Save the audio content to a temporary file with .m4a extension
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".m4a") as temp_audio_file:
-            temp_audio_file.write(audio_content)
+        with tempfile.NamedTemporaryFile(suffix='.m4a', delete=False) as temp_audio_file:
+            for chunk in message_content.iter_content():
+                temp_audio_file.write(chunk)
             temp_audio_path = temp_audio_file.name
 
-        # Convert the audio to text using Whisper API
-        with open(temp_audio_path, "rb") as audio_file:
-            whisper_response = openai.Audio.transcribe("whisper-1", audio_file)
-            transcribed_text = whisper_response["text"]
+        
+        with open(temp_audio_path, 'rb') as audio_file:
+            transcription = openai.Audio.transcribe("whisper-1", audio_file)
+            transcribed_text = transcription['text']
 
-        # Delete the temporary audio file after conversion
-        os.remove(temp_audio_path)
         logger.info(f"{transcribed_text}")
 
         thread_id = fdb.get(user_chat_path, "thread_id")
@@ -560,10 +557,6 @@ def handle_audio_message(event):
         except Exception as e:
             logger.error(f"OpenAI API error: {e}")
             assistant_reply = "Sorry, I couldn't process your request."
-
-
-        # Store the assistant's reply in Firebase (optional)
-        fdb.put_async(user_chat_path, None, {"assistant_reply_to_audio": assistant_reply})
 
         # Send the cleaned reply to the user via LINE
         with ApiClient(configuration) as api_client:
