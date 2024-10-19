@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import openai
+import re
 
 from fastapi import FastAPI, HTTPException, Request
 from linebot.v3 import WebhookHandler
