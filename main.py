@@ -18,8 +18,8 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from dotenv import load_dotenv
 from firebase import firebase
 import uvicorn
-from typing_extensions import override
 from openai import AssistantEventHandler
+from typing_extensions import override
 
 # Load environment variables from .env file
 if os.getenv("API_ENV") != "production":
@@ -54,38 +54,26 @@ assistant_id = os.getenv("OPENAI_ASSISTANT_ID")
 firebase_url = os.getenv("FIREBASE_URL")
 fdb = firebase.FirebaseApplication(firebase_url, None)
 
-# Define an EventHandler to handle streaming responses
-class EventHandler(AssistantEventHandler):
+# Define an EventHandler for streaming responses
+class CustomEventHandler(AssistantEventHandler):
     def __init__(self):
-        self.final_response = ""  # Store the accumulated response
+        self.final_response = ""
 
     @override
-    def on_text_created(self, text) -> None:
-        """Handle initial text creation."""
+    def on_text_created(self, text: str) -> None:
+        """Handle the initial creation of text."""
         print(f"\nassistant > {text}", end="", flush=True)
 
     @override
     def on_text_delta(self, delta, snapshot):
-        """Accumulate partial responses."""
+        """Accumulate text deltas as they stream in."""
         self.final_response += delta.value
         print(delta.value, end="", flush=True)
 
     @override
     def on_tool_call_created(self, tool_call):
-        """Log when a tool is called."""
+        """Log when a tool call is made."""
         print(f"\nassistant > Tool call: {tool_call.type}\n", flush=True)
-
-    @override
-    def on_tool_call_delta(self, delta, snapshot):
-        """Log intermediate tool results."""
-        if delta.type == 'code_interpreter':
-            if delta.code_interpreter.input:
-                print(delta.code_interpreter.input, end="", flush=True)
-            if delta.code_interpreter.outputs:
-                print(f"\n\noutput >", flush=True)
-                for output in delta.code_interpreter.outputs:
-                    if output.type == "logs":
-                        print(f"\n{output.logs}", flush=True)
 
 # Health check endpoint
 @app.get("/health")
@@ -106,7 +94,7 @@ async def handle_callback(request: Request):
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event: MessageEvent):
-    """Handle incoming LINE messages."""
+    """Handle incoming messages."""
     text = event.message.text
     user_id = event.source.user_id
 
@@ -115,38 +103,39 @@ def handle_text_message(event: MessageEvent):
     thread_id = fdb.get(user_chat_path, "thread_id")
 
     if not thread_id:
-        logger.info(f"No thread_id found for user {user_id}. Creating a new thread.")
+        logger.info(f"Creating a new thread for user {user_id}.")
         thread = client.beta.threads.create()
         thread_id = thread.id
         fdb.put(user_chat_path, "thread_id", thread_id)
 
-    # Add user message to the thread
+    # Add the user's message to the thread
     client.beta.threads.messages.create(
         thread_id=thread_id,
         role="user",
         content=text,
     )
 
-    # Stream the assistant response
-    stream_handler = EventHandler()
+    # Stream the assistant's response
+    event_handler = CustomEventHandler()
 
     try:
         with client.beta.threads.runs.stream(
             thread_id=thread_id,
             assistant_id=assistant_id,
-            event_handler=stream_handler,
+            event_handler=event_handler,
         ) as stream:
             stream.until_done()
 
-        assistant_reply = stream_handler.final_response  # Accumulate response
+        assistant_reply = event_handler.final_response
 
     except Exception as e:
         logger.error(f"OpenAI API error: {e}")
         assistant_reply = "Sorry, I couldn't process your request."
 
-    # Store reply in Firebase and send to LINE
+    # Store the assistant's reply in Firebase
     fdb.put_async(user_chat_path, None, {"assistant_reply": assistant_reply})
 
+    # Send the reply to the user via LINE
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         line_bot_api.reply_message(
@@ -157,36 +146,6 @@ def handle_text_message(event: MessageEvent):
         )
 
     return "OK"
-
-'''
-# Local test function to simulate interactions
-def local_test():
-    print("Starting local test...")
-    thread = client.beta.threads.create()
-    print(f"Created thread with ID: {thread.id}")
-
-    client.beta.threads.messages.create(
-        thread_id=thread.id,
-        role="user",
-        content="What courses are available in the JSON file?",
-    )
-
-    stream_handler = EventHandler()
-
-    try:
-        with client.beta.threads.runs.stream(
-            thread_id=thread.id,
-            assistant_id=assistant_id,
-            event_handler=stream_handler,
-        ) as stream:
-            stream.until_done()
-
-        print("\nFinal Response:", stream_handler.final_response)
-
-    except Exception as e:
-        logger.error(f"OpenAI API error during local test: {e}")
-
-'''
 
 
 # Entry point to run the application
