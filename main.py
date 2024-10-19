@@ -133,14 +133,7 @@ def handle_text_message(event: MessageEvent):
 
         account_name = os.getenv('ACCOUNT_NAME', 'Our Service')
 
-        reply_message = f"""Hello {nickname}!
-Welcome to {account_name}😊
-
-To get started, please set up your identity by answering these questions below so we can assist you better! ✨
-
-Let us know if you need any help along the way! We're here for you. 💬🫶
-
-Please enter your Country/Language (e.g., Japan/Japanese)."""
+        reply_message = f"""Please enter your Country/Language (e.g., Japan/Japanese)."""
         user_data['state'] = 'waiting_for_country_language'
         fdb.put('users', user_id, user_data)
 
