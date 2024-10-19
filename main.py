@@ -383,7 +383,7 @@ def handle_text_message(event: MessageEvent):
     text = event.message.text.strip().lower()
     user_id = event.source.user_id
 
-    if text == "reset" or text == "user setup":
+    if text == "User Setup":
         # 執行使用者重設
         reset_user_to_initial_state(user_id, event.reply_token)
     else:
