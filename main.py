@@ -121,7 +121,7 @@ def handle_follow_event(event):
     with ApiClient(configuration) as api_client:
         line_bot_api_2 = MessagingApi(api_client)
         try:
-            profile = line_bot_api_2_2.get_profile(user_id)
+            profile = line_bot_api_2.get_profile(user_id)
             display_name = profile.display_name
         except Exception as e:
             logger.error(f"Error getting user profile: {e}")
