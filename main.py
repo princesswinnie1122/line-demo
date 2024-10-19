@@ -618,7 +618,7 @@ def handle_github_message(event):
 
 
         # Store the assistant's reply in Firebase (optional)
-        fdb.put_async(user_chat_path, None, {"assistant_reply_to_image": assistant_reply_cleaned})
+        fdb.put_async(user_chat_path, None, {"assistant_reply_to_image": assistant_reply})
 
         # Send the cleaned reply to the user via LINE
         with ApiClient(configuration) as api_client:
@@ -626,7 +626,7 @@ def handle_github_message(event):
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[TextMessage(text=assistant_reply_cleaned.strip())],
+                    messages=[TextMessage(text=assistant_reply.strip())],
                 )
             )
 
