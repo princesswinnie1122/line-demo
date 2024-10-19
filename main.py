@@ -227,7 +227,11 @@ def handle_text_message(event: MessageEvent):
             fdb.put(user_data_path, "state", "awaiting_mode_selection")
 
             # Ask for mode preference
-            completion_message = """Thank you! Your information has been saved. Would you prefer normal or bilingual mode (showing both your native language and Traditional Chinese)? Type 0 for normal and 1 for bilingual.💬"""
+            completion_message = """Thank you! Your information has been saved. 
+
+Would you prefer normal or bilingual mode (showing both your native language and Traditional Chinese)?
+
+Type "n" for normal and "b" for bilingual.💬"""
 
             reply_messages = [TextMessage(text=completion_message)]
 
@@ -591,7 +595,7 @@ def handle_github_message(event):
             fdb.put(user_chat_path, "thread_id", thread_id)
 
 
-        custom_system_message = f"Organize content of the image:"
+        custom_system_message = f"Organize content of the image into notes. Do not use markdown bold formatting (**). Do not start with 'The image shows' or 'This image depicts'. Here's the description of the image:"
         combined_message = f"{custom_system_message}\n\n{image_data}"
 
         client.beta.threads.messages.create(
