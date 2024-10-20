@@ -7,5 +7,4 @@ openai-whisper
 grpcio
 pillow
 requests
-ffmpeg-python
 git+https://github.com/ozgur/python-firebase
