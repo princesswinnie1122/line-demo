@@ -360,46 +360,6 @@ Type "0" for normal and "1" for bilingual.💬"""
 
         return "OK"
 
-'''
-def reset_user_to_initial_state(user_id: str, reply_token: str):
-    """重設使用者資料，並模擬追蹤事件（FollowEvent）。"""
-    user_data_path = f"users/{user_id}"
-    user_chat_path = f"chat/{user_id}"
-
-    # 刪除該使用者的所有資料和聊天記錄
-    fdb.delete(user_data_path, None)
-    fdb.delete(user_chat_path, None)
-
-    # 初始化 Firebase 狀態為等待輸入國家和語言
-    fdb.put(user_data_path, "state", "awaiting_country_language")
-
-    # 模擬一個 FollowEvent 事件並傳遞給 handle_follow_event
-    mock_event = FollowEvent(
-        source=event.source,  # 包含 user_id 等相關資料
-        reply_token=reply_token,
-        timestamp=None  # 可選，設為 None 或 datetime.now().timestamp()
-    )
-
-    # 呼叫 handle_follow_event，模擬使用者剛加入時的情況
-    handle_follow_event(mock_event)
-
-
-# 處理 TextMessage 事件，偵測 reset 指令
-@handler.add(MessageEvent, message=TextMessageContent)
-def handle_text_message(event: MessageEvent):
-    text = event.message.text.strip().lower()
-    user_id = event.source.user_id
-
-    if text == "User Setup":
-        # 執行使用者重設
-        reset_user_to_initial_state(user_id, event.reply_token)
-    else:
-        # 處理其他訊息
-        handle_user_message(event, text)
-'''
-
-
-
 @handler.add(MessageEvent, message=AudioMessageContent)
 def handle_audio_message(event):
 
