@@ -10,7 +10,7 @@ from PIL import Image
 from io import BytesIO
 import logging
 import os
-import whisper
+#import whisper
 
 from fastapi import FastAPI, HTTPException, Request
 from linebot.v3 import WebhookHandler
