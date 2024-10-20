@@ -539,7 +539,6 @@ def handle_audio_message(event):
             )
 
         return "OK"
-
 '''
 
 # Image processing
@@ -746,7 +745,7 @@ def handle_image_message(event):
 
         return "OK"
     
-    
+
 # Entry point to run the application
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "test":
