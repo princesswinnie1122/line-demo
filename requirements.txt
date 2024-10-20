@@ -3,7 +3,7 @@ uvicorn[standard]
 line-bot-sdk
 google.generativeai
 openai
-openai-whisper
+#openai-whisper
 grpcio
 pillow
 requests

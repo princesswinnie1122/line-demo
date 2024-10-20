@@ -360,6 +360,7 @@ Type "0" for normal and "1" for bilingual.💬"""
 
         return "OK"
 
+'''
 @handler.add(MessageEvent, message=AudioMessageContent)
 def handle_audio_message(event):
 
@@ -539,7 +540,7 @@ def handle_audio_message(event):
 
         return "OK"
 
-
+'''
 
 # Image processing
 def check_image(url=None, b_image=None):

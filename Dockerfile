@@ -1,9 +1,9 @@
 FROM python:3.9
 
 # Install ffmpeg (for Debian/Ubuntu-based images)
-RUN apt-get update && apt-get install -y ffmpeg && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-    
+#RUN apt-get update && apt-get install -y ffmpeg && \
+ #   apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # 將專案複製到容器中
 COPY . /app
 WORKDIR /app
