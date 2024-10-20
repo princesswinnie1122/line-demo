@@ -519,11 +519,20 @@ def handle_audio_message(event):
             for chunk in message_content.iter_content():
                 temp_audio_file.write(chunk)
             temp_audio_path = temp_audio_file.name
-        
-        model = whisper.load_model("turbo")
-        transcription = model.transcribe(temp_audio_path)
-        transcribed_text = transcription['text']
-        logger.info(f"{transcribed_text}")
+
+        model = whisper.load_model("tiny")
+        audio = whisper.load_audio(temp_audio_path)
+        audio = whisper.pad_or_trim(audio)
+
+        # make log-Mel spectrogram and move to the same device as the model
+        mel = whisper.log_mel_spectrogram(audio).to(model.device)
+
+        # detect the spoken language
+        _, probs = model.detect_language(mel)
+
+        # decode the audio
+        options = whisper.DecodingOptions()
+        result = whisper.decode(model, mel, options)
 
         thread_id = fdb.get(user_chat_path, "thread_id")
         if not thread_id:
@@ -534,7 +543,7 @@ def handle_audio_message(event):
 
 
         custom_system_message = f"Organize content of the audio into notes. Do not use markdown bold formatting (**). Do not start with 'The image shows' or 'This image depicts'. Here's the description of the image:"
-        combined_message = f"{custom_system_message}\n\n{transcribed_text}"
+        combined_message = f"{custom_system_message}\n\n{result.text}"
 
         client.beta.threads.messages.create(
             thread_id=thread_id,
