@@ -1,4 +1,5 @@
 # UniHelp
+> If you need help, go for UniHelp.
 
 ## 動機 (Motivation)
 
